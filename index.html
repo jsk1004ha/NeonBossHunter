@@ -452,14 +452,11 @@
       const isDashPressed = keyState.has('ShiftLeft');
       
       if(isDashPressed && this.dashCd === 0) {
-        if(!this.isDashPreviewing) {
-          // 대쉬 미리보기 시작
-          this.isDashPreviewing = true;
-          // 마우스 방향으로 대쉬 위치 계산
-          const dashAngle = this.aim;
-          this.dashPreviewX = clamp(this.x + Math.cos(dashAngle) * this.dashDistance, 20, W-20);
-          this.dashPreviewY = clamp(this.y + Math.sin(dashAngle) * this.dashDistance, 20, H-20);
-        }
+        // 대쉬 미리보기 - 지속적으로 현재 위치와 조준 방향 기준으로 업데이트
+        this.isDashPreviewing = true;
+        const dashAngle = this.aim;
+        this.dashPreviewX = clamp(this.x + Math.cos(dashAngle) * this.dashDistance, 20, W-20);
+        this.dashPreviewY = clamp(this.y + Math.sin(dashAngle) * this.dashDistance, 20, H-20);
       } else if(!isDashPressed && this.isDashPreviewing) {
         // 대쉬 실행
         this.x = this.dashPreviewX;
@@ -478,6 +475,9 @@
             sz: rand(3, 8)
           });
         }
+      } else if(!isDashPressed) {
+        // Shift를 누르지 않으면 미리보기 해제
+        this.isDashPreviewing = false;
       }
       
       // 이동 입력
