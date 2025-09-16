@@ -168,14 +168,22 @@
 
   // ===== 저장 =====
   const SAVE_KEY='neon_boss_hunter_v1';
+  
+  // ===========================================
+  // 디버그 모드 활성화 방법:
+  // debugMode: false를 debugMode: true로 변경
+  // 플레이어가 무적이 되어 모든 데미지를 무시합니다
+  // ===========================================
+  
   const defaultSave = {
     bestTimeSec:null,
     bestStage:0,
     settings:{
       colorBlind:false, showHitbox:false, showFps:false, vibrate:true,
+      debugMode:false, // 디버그 모드 - 무적 (코드에서만 변경 가능)
       keys:{up:'KeyW',down:'KeyS',left:'KeyA',right:'KeyD',fire:'MouseLeft',dash:'ShiftLeft',pause:'Escape'}
     },
-    unlockedWeapons:{ LASER:true, SHOTGUN:true, ROCKET:true, MINIGUN:true, PLASMA:true, BOOMERANG:true }
+    unlockedWeapons:{ LASER:true, SHOTGUN:true, ROCKET:true, MINIGUN:true, PLASMA:true, BOOMERANG:true, SMG:true, SNIPER:true }
   };
   let save = loadSave();
 
@@ -327,7 +335,9 @@
     {id:'ROCKET', name:'로켓', desc:'폭발 범위 피해/넉백', type:'ranged', move:0.95},
     {id:'MINIGUN', name:'기관총', desc:'고연사 저반동, 과열', type:'ranged', move:1.05},
     {id:'PLASMA', name:'플라즈마', desc:'충전식 고위력 관통탄', type:'ranged', move:0.90},
-    {id:'BOOMERANG', name:'부메랑', desc:'되돌아오는 곡선 투사체', type:'ranged', move:1.05}
+    {id:'BOOMERANG', name:'부메랑', desc:'되돌아오는 곡선 투사체', type:'ranged', move:1.05},
+    {id:'SMG', name:'기관단총', desc:'초고속 연사, 기동성 특화', type:'ranged', move:1.25},
+    {id:'SNIPER', name:'저격총', desc:'장거리 고위력, 정밀 사격', type:'ranged', move:0.75}
   ];
   let chosenWeapon = 'LASER';
 
@@ -367,8 +377,8 @@
       color:'#ffd24a',
       baseHP:1600,
       phases:[
-        { name:'Shockwaves',     until:0.6,   script:'shocks' },
-        { name:'Meteor Hammers', until:0.3,   script:'meteors' },
+        { name:'Meteor Hammers', until:0.6,   script:'meteors' },
+        { name:'Shockwaves',     until:0.3,   script:'shocks' },
         { name:'Desperation',    until:0.0,   script:'desperate' }
       ]
     }
@@ -422,7 +432,7 @@
   class Player{
     constructor(){
       this.x=W*0.5; this.y=H*0.75;
-      this.r=12; this.hp=3; this.ifr=0;
+      this.r=12; this.hp=3; this.hpMax=3; this.ifr=0;
       this.moveSpd=220; // base, weapon별 계수 적용
       this.fireCd=0; this.meleeCd=0; this.dashCd=0; this.overheat=0;
       this.weapon=chosenWeapon;
@@ -550,6 +560,12 @@
       }
     }
     hit(dmg){
+      // 디버그 모드에서는 무적
+      if(settings.debugMode) {
+        console.log('DEBUG MODE: Damage ignored -', dmg);
+        return;
+      }
+      
       if(this.ifr>0 || !this.alive) return;
       this.hp-=dmg; this.ifr=1.0;
       vibrate(40);
@@ -992,9 +1008,9 @@
         }
       }
     },
-    // 타이탄 포지 Phase 1 - 충격파 패턴 확장 (회피 가능하게 수정)
+    // 타이탄 포지 Phase 2 - 충격파 패턴 확장 (회피 가능하게 수정)
     shocks(b,dt){
-      if(!b._sk){ b._sk={cd:0, wave:0, shockType:0, comboTimer:0}; }
+      if(!b._sk){ b._sk={cd:2.0, wave:0, shockType:0, comboTimer:0}; } // 초기 딜레이 2초 추가
       const S=b._sk; S.cd-=dt; S.comboTimer+=dt;
       
       // 충격파 타입 변경 (4가지)
@@ -1004,20 +1020,26 @@
         S.cd = 0.8 + S.shockType * 0.15; // 발사 간격 증가 (0.6->0.8, 0.1->0.15)
         
         if(S.shockType === 0) { // 기본 링 - 더 많은 갭
-          const hasGap = S.wave % 3 === 0; // 갭 빈도 증가 (4->3)
+          const hasGap = S.wave % 2 === 0; // 갭 빈도 더 증가 (3->2, 50% 갭)
           if(!hasGap){
-            spawnBullet({x:b.x,y:b.y,ring:true, r:30, vr:160, thick:6, dmg:1, color:'#ffd24a', hostile:true, ttl:3.2}); // 속도 감소 (200->160), 두께 감소 (10->6)
+            spawnBullet({x:b.x,y:b.y,ring:true, r:30, vr:140, thick:4, dmg:1, color:'#ffd24a', hostile:true, ttl:3.2}); // 속도 더 감소 (160->140), 두께 더 감소 (6->4)
           }
         } else if(S.shockType === 1) { // 이중 링 - 속도와 두께 감소
-          spawnBullet({x:b.x,y:b.y,ring:true, r:25, vr:140, thick:5, dmg:1, color:'#ffd24a', hostile:true, ttl:3.5}); // 속도 감소 (180->140), 두께 감소 (8->5)
-          setTimeout(()=>{
-            if(boss && boss.alive){
-              spawnBullet({x:b.x,y:b.y,ring:true, r:25, vr:170, thick:5, dmg:1, color:'#ff71ff', hostile:true, ttl:3.0}); // 속도 감소 (220->170), 두께 감소 (8->5)
-            }
-          }, 400); // 딜레이 증가 (300->400)
+          const hasGap = S.wave % 3 === 0; // 이중 링도 갭 추가
+          if(!hasGap) {
+            spawnBullet({x:b.x,y:b.y,ring:true, r:25, vr:120, thick:4, dmg:1, color:'#ffd24a', hostile:true, ttl:3.5}); // 속도 더 감소 (140->120), 두께 감소 (5->4)
+            setTimeout(()=>{
+              if(boss && boss.alive){
+                spawnBullet({x:b.x,y:b.y,ring:true, r:25, vr:150, thick:4, dmg:1, color:'#ff71ff', hostile:true, ttl:3.0}); // 속도 더 감소 (170->150), 두께 감소 (5->4)
+              }
+            }, 500); // 딜레이 더 증가 (400->500)
+          }
         } else if(S.shockType === 2) { // 가변속도 링 - 속도 범위 감소
-          const speed = 120 + Math.sin(S.wave*0.5)*50; // 속도 범위 감소 (150+70 -> 120+50)
-          spawnBullet({x:b.x,y:b.y,ring:true, r:35, vr:speed, thick:8, dmg:1, color:'#ff3b5c', hostile:true, ttl:4.0}); // 두께 감소 (12->8)
+          const hasGap = S.wave % 4 === 0; // 가변속도 링도 갭 추가
+          if(!hasGap) {
+            const speed = 100 + Math.sin(S.wave*0.5)*40; // 속도 범위 더 감소 (120+50 -> 100+40)
+            spawnBullet({x:b.x,y:b.y,ring:true, r:35, vr:speed, thick:6, dmg:1, color:'#ff3b5c', hostile:true, ttl:4.0}); // 두께 감소 (8->6)
+          }
         } else { // 섹터 충격파 - 각도 범위 감소
           for(let i=0;i<4;i++){
             const angle = i*TAU/4 + S.wave*0.1;
@@ -1172,7 +1194,7 @@
         // 발사!
         const chargeRatio = p.chargeTime / 2.0;
         const size = 6 + chargeRatio * 8; // 6~14
-        const damage = (2.5 + chargeRatio * 5.0) * playerUp.dmg; // 2.5~7.5배 (was 2.0~6.0)
+        const damage = (5.0 + chargeRatio * 10.0) * playerUp.dmg; // 5.0~15.0배 (2x buff from 2.5~7.5)
         const speed = 500 * playerUp.projSpeed;
         const penetration = Math.floor(chargeRatio * 4); // 0~4 관통
         
@@ -1283,6 +1305,67 @@
             ttl: 0.4,
             color: '#00ff88',
             sz: rand(3, 5)
+          });
+        }
+      }
+      else if(bw==='SMG'){
+        p.fireCd = 0.05 / playerUp.rof; // 매우 빠른 연사 (0.05초 간격)
+        const a = p.aim + rand(-0.08, 0.08); // 약간의 반동
+        const spd = 650 * playerUp.projSpeed; // 빠른 탄속
+        const dmg = 6 * playerUp.dmg; // 낮은 기본 데미지
+        const range = 0.6 * playerUp.range; // 짧은 사정거리
+        
+        spawnBullet({
+          x: p.x + Math.cos(a) * 10,
+          y: p.y + Math.sin(a) * 10,
+          vx: Math.cos(a) * spd,
+          vy: Math.sin(a) * spd,
+          r: 3, // 작은 탄환
+          dmg: dmg * 0.35, // 최종 데미지: 매우 낮음
+          ttl: 0.4 * range, // 짧은 사정거리
+          color: '#ffaa00',
+          hostile: false
+        });
+        
+        // SMG 발사 이펙트 (간단함)
+        for(let i=0; i<2; i++) {
+          spawnPart({
+            x: p.x + Math.cos(p.aim) * 8 + rand(-2, 2),
+            y: p.y + Math.sin(p.aim) * 8 + rand(-2, 2),
+            ttl: 0.1,
+            color: '#ffaa00',
+            sz: rand(2, 4)
+          });
+        }
+      }
+      else if(bw==='SNIPER'){
+        p.fireCd = 2.5 / playerUp.rof; // 매우 느린 연사 (2.5초 간격으로 증가)
+        const a = p.aim; // 정확한 조준
+        const spd = 1200 * playerUp.projSpeed; // 매우 빠른 탄속
+        const dmg = 50 * playerUp.dmg; // 높은 기본 데미지 (2x buff: 25->50)
+        const range = 2.5 * playerUp.range; // 긴 사정거리
+        
+        spawnBullet({
+          x: p.x + Math.cos(a) * 25,
+          y: p.y + Math.sin(a) * 25,
+          vx: Math.cos(a) * spd,
+          vy: Math.sin(a) * spd,
+          r: 4,
+          dmg: dmg * 0.8, // 최종 데미지: 매우 높음 (50*0.8=40)
+          ttl: 1.5 * range, // 긴 사정거리
+          color: '#ff4444',
+          hostile: false,
+          penetration: 2 // 관통력 추가
+        });
+        
+        // 저격총 발사 이펙트 (강력함)
+        for(let i=0; i<15; i++) {
+          spawnPart({
+            x: p.x + Math.cos(p.aim + Math.PI) * 20 + rand(-5, 5),
+            y: p.y + Math.sin(p.aim + Math.PI) * 20 + rand(-5, 5),
+            ttl: 0.3,
+            color: '#ff4444',
+            sz: rand(4, 8)
           });
         }
       }
@@ -1686,6 +1769,14 @@
     if(settings.showFps){
       ctx.fillStyle='#9ff'; ctx.fillText(`${fps} fps`, 10, 16);
     }
+    
+    // 디버그 모드 표시
+    if(settings.debugMode){
+      ctx.fillStyle='#ff0000'; 
+      ctx.font='16px monospace';
+      ctx.fillText('DEBUG MODE - INVINCIBLE', 10, 40);
+      ctx.font='12px monospace'; // 폰트 복원
+    }
   }
 
 
@@ -2055,7 +2146,7 @@
     {id:'ROF', text:'연사속도 +15%', apply:()=>playerUp.rof*=1.15},
     {id:'SPD', text:'탄속 +20%', apply:()=>playerUp.projSpeed*=1.2},
     {id:'RANGE', text:'사거리 +15%', apply:()=>playerUp.range*=1.15},
-    {id:'HEART', text:'최대 체력 +1 (즉시 회복)', apply:()=>{player.hp++; playerUp.survivability*=1.05}},
+    {id:'HEART', text:'최대 체력 +1 (즉시 회복)', apply:()=>{player.hpMax++; player.hp++; playerUp.survivability*=1.05}},
     {id:'SPECIAL_LASER', text:'레이저 과열 내성↑(쿨 -15%)', apply:()=>playerUp.special.laserCool = (playerUp.special.laserCool||1)*0.85},
     {id:'SPECIAL_MELEE', text:'근접 경직 강화(+10%)', apply:()=>playerUp.special.stagger = (playerUp.special.stagger||0)+0.1},
     {id:'CORE_MAGNET', text:'코어 흡입 강화', apply:()=>playerUp.special.magnet = (playerUp.special.magnet||0)+1}
