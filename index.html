@@ -431,6 +431,12 @@
       // 플라즈마 캐논용
       this.chargeTime=0;
       this.isCharging=false;
+      // 대쉬 시스템
+      this.isDashPreviewing=false;
+      this.dashPreviewX=0;
+      this.dashPreviewY=0;
+      this.dashDistance=120;
+      this.dashCooldown=2.0;
     }
     speed(){
       const w=weapons.find(w=>w.id===this.weapon);
@@ -438,6 +444,42 @@
     }
     update(dt){
       if(!this.alive) return;
+      
+      // 대쉬 쿨다운 감소
+      this.dashCd = Math.max(0, this.dashCd - dt);
+      
+      // 대쉬 입력 처리 (Left Shift)
+      const isDashPressed = keyState.has('ShiftLeft');
+      
+      if(isDashPressed && this.dashCd === 0) {
+        if(!this.isDashPreviewing) {
+          // 대쉬 미리보기 시작
+          this.isDashPreviewing = true;
+          // 마우스 방향으로 대쉬 위치 계산
+          const dashAngle = this.aim;
+          this.dashPreviewX = clamp(this.x + Math.cos(dashAngle) * this.dashDistance, 20, W-20);
+          this.dashPreviewY = clamp(this.y + Math.sin(dashAngle) * this.dashDistance, 20, H-20);
+        }
+      } else if(!isDashPressed && this.isDashPreviewing) {
+        // 대쉬 실행
+        this.x = this.dashPreviewX;
+        this.y = this.dashPreviewY;
+        this.dashCd = this.dashCooldown;
+        this.isDashPreviewing = false;
+        this.ifr = 0.3; // 대쉬 후 짧은 무적 시간
+        
+        // 대쉬 이펙트
+        for(let i=0; i<12; i++) {
+          spawnPart({
+            x: this.x + rand(-15, 15),
+            y: this.y + rand(-15, 15),
+            ttl: 0.4,
+            color: '#00ff88',
+            sz: rand(3, 8)
+          });
+        }
+      }
+      
       // 이동 입력
       let ix=0, iy=0;
       // 모바일 우선
@@ -472,6 +514,30 @@
       handleWeaponFire(this, dt, wantsFire);
     }
     draw(g){
+      // 대쉬 미리보기 그리기
+      if(this.isDashPreviewing) {
+        g.save();
+        g.globalAlpha = 0.6;
+        g.strokeStyle = '#00ff88';
+        g.setLineDash([5, 5]);
+        g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(this.x, this.y);
+        g.lineTo(this.dashPreviewX, this.dashPreviewY);
+        g.stroke();
+        g.setLineDash([]);
+        
+        // 목표 위치 표시
+        g.fillStyle = '#00ff8866';
+        g.beginPath();
+        g.arc(this.dashPreviewX, this.dashPreviewY, this.r, 0, TAU);
+        g.fill();
+        g.strokeStyle = '#00ff88';
+        g.lineWidth = 2;
+        g.stroke();
+        g.restore();
+      }
+      
       // 플레이어 — 픽셀 아트 스타일
       if(this.ifr > 0 && Math.floor(now() / 100) % 2) return; // 피격 시 깜빡임
       drawPixelPlayer(this.x, this.y, this.r, this.aim);
@@ -566,12 +632,13 @@
         for(let i=0;i<60;i++) spawnPart({x:this.x+rand(-40,40),y:this.y+rand(-40,40),ttl:rand(0.5,1.2),color:this.color,sz:rand(8,16)});
         for(let i=0;i<20;i++) spawnOrb(this.x+rand(-30,30),this.y+rand(-30,30), rand(2,4));
         
-        // 포탈 생성
-        gameState = STATE.STAGECLEAR;
-        portal = { x: this.x, y: this.y, r: 30, t: 0 };
+        // 체력 회복
+        player.hp = Math.min(player.hpMax, player.hp + player.hpMax * 0.5); // 50% 체력 회복
         
-        // 더 이상 nextStage()를 직접 호출하지 않음
-        // stageClear(); 
+        // 직접 업그레이드 화면 표시
+        setTimeout(() => {
+          presentUpgradeChoices();
+        }, 500);
       }
     }
   }
@@ -925,7 +992,7 @@
         }
       }
     },
-    // 타이탄 포지 Phase 1 - 충격파 패턴 확장
+    // 타이탄 포지 Phase 1 - 충격파 패턴 확장 (회피 가능하게 수정)
     shocks(b,dt){
       if(!b._sk){ b._sk={cd:0, wave:0, shockType:0, comboTimer:0}; }
       const S=b._sk; S.cd-=dt; S.comboTimer+=dt;
@@ -934,35 +1001,35 @@
       if(S.comboTimer > 6) { S.shockType = (S.shockType + 1) % 4; S.comboTimer = 0; }
       
       if(S.cd<=0){
-        S.cd = 0.6 + S.shockType * 0.1;
+        S.cd = 0.8 + S.shockType * 0.15; // 발사 간격 증가 (0.6->0.8, 0.1->0.15)
         
-        if(S.shockType === 0) { // 기본 링
-          const hasGap = S.wave % 4 === 0;
+        if(S.shockType === 0) { // 기본 링 - 더 많은 갭
+          const hasGap = S.wave % 3 === 0; // 갭 빈도 증가 (4->3)
           if(!hasGap){
-            spawnBullet({x:b.x,y:b.y,ring:true, r:30, vr:200, thick:10, dmg:1, color:'#ffd24a', hostile:true, ttl:3.2});
+            spawnBullet({x:b.x,y:b.y,ring:true, r:30, vr:160, thick:6, dmg:1, color:'#ffd24a', hostile:true, ttl:3.2}); // 속도 감소 (200->160), 두께 감소 (10->6)
           }
-        } else if(S.shockType === 1) { // 이중 링
-          spawnBullet({x:b.x,y:b.y,ring:true, r:25, vr:180, thick:8, dmg:1, color:'#ffd24a', hostile:true, ttl:3.5});
+        } else if(S.shockType === 1) { // 이중 링 - 속도와 두께 감소
+          spawnBullet({x:b.x,y:b.y,ring:true, r:25, vr:140, thick:5, dmg:1, color:'#ffd24a', hostile:true, ttl:3.5}); // 속도 감소 (180->140), 두께 감소 (8->5)
           setTimeout(()=>{
             if(boss && boss.alive){
-              spawnBullet({x:b.x,y:b.y,ring:true, r:25, vr:220, thick:8, dmg:1, color:'#ff71ff', hostile:true, ttl:3.0});
+              spawnBullet({x:b.x,y:b.y,ring:true, r:25, vr:170, thick:5, dmg:1, color:'#ff71ff', hostile:true, ttl:3.0}); // 속도 감소 (220->170), 두께 감소 (8->5)
             }
-          }, 300);
-        } else if(S.shockType === 2) { // 가변속도 링
-          const speed = 150 + Math.sin(S.wave*0.5)*70;
-          spawnBullet({x:b.x,y:b.y,ring:true, r:35, vr:speed, thick:12, dmg:1, color:'#ff3b5c', hostile:true, ttl:4.0});
-        } else { // 섹터 충격파
+          }, 400); // 딜레이 증가 (300->400)
+        } else if(S.shockType === 2) { // 가변속도 링 - 속도 범위 감소
+          const speed = 120 + Math.sin(S.wave*0.5)*50; // 속도 범위 감소 (150+70 -> 120+50)
+          spawnBullet({x:b.x,y:b.y,ring:true, r:35, vr:speed, thick:8, dmg:1, color:'#ff3b5c', hostile:true, ttl:4.0}); // 두께 감소 (12->8)
+        } else { // 섹터 충격파 - 각도 범위 감소
           for(let i=0;i<4;i++){
             const angle = i*TAU/4 + S.wave*0.1;
-            spawnBullet({x:b.x,y:b.y,ring:true, r:30, vr:190, thick:6, dmg:1, color:'#49f3ff', hostile:true, ttl:2.8, sector:{start:angle-0.3, end:angle+0.3}});
+            spawnBullet({x:b.x,y:b.y,ring:true, r:30, vr:150, thick:4, dmg:1, color:'#49f3ff', hostile:true, ttl:2.8, sector:{start:angle-0.4, end:angle+0.4}}); // 속도 감소 (190->150), 두께 감소 (6->4), 각도 증가 (0.3->0.4)
           }
         }
         S.wave++;
       }
       
-      // 추가: 지진 효과 (작은 탄환 흩뿌리기)
-      if(Math.floor(S.comboTimer*3)%9===0 && chance(0.04)){
-        const N=16; const speed=80;
+      // 추가: 지진 효과 (작은 탄환 흩뿌리기) - 빈도 감소
+      if(Math.floor(S.comboTimer*3)%12===0 && chance(0.02)){ // 빈도 감소 (9->12), 확률 감소 (0.04->0.02)
+        const N=12; const speed=60; // 탄환 수 감소 (16->12), 속도 감소 (80->60)
         for(let i=0;i<N;i++){
           const a = i/N*TAU + Math.random()*0.5;
           spawnBullet({x:b.x+rand(-20,20),y:b.y+rand(-20,20), vx:Math.cos(a)*speed, vy:Math.sin(a)*speed, r:3, dmg:1, color:'#ffd24a', hostile:true});
@@ -1589,6 +1656,32 @@
       drawPixelParticle(p.x, p.y, p.sz, p.color||'#fff', p.ttl);
     }
 
+    // 대쉬 쿨다운 표시
+    if(player && gameState === STATE.PLAY) {
+      const dashRatio = 1 - (player.dashCd / player.dashCooldown);
+      const barWidth = 60;
+      const barHeight = 6;
+      const barX = W - barWidth - 20;
+      const barY = 50;
+      
+      ctx.save();
+      // 배경
+      ctx.fillStyle = '#333333';
+      ctx.fillRect(barX, barY, barWidth, barHeight);
+      // 진행도
+      ctx.fillStyle = dashRatio >= 1 ? '#00ff88' : '#666666';
+      ctx.fillRect(barX, barY, barWidth * dashRatio, barHeight);
+      // 테두리
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(barX, barY, barWidth, barHeight);
+      // 라벨
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '12px monospace';
+      ctx.fillText('DASH', barX, barY - 2);
+      ctx.restore();
+    }
+
     // 디버그
     if(settings.showFps){
       ctx.fillStyle='#9ff'; ctx.fillText(`${fps} fps`, 10, 16);
@@ -2046,7 +2139,19 @@
   }
   function hideLvl(){
     document.getElementById('lvlup').style.display='none';
-    gameState=STATE.PLAY;
+    
+    // 다음 스테이지로 진행
+    stageIndex++;
+    if(stageIndex>=BOSSES.length){
+      // 전 스테이지 클리어
+      stageClearAll();
+      return;
+    }
+    
+    gameState = STATE.PLAY;
+    stageNote(`STAGE ${stageIndex+1}`);
+    boss = new Boss(BOSSES[stageIndex]);
+    updateHpBar();
   }
 
   function togglePause(){
