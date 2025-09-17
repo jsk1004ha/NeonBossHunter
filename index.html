@@ -41,7 +41,7 @@
   .floating .btn{border:1px solid rgba(120,160,255,.25);background:rgba(12,18,40,.8);border-radius:2px;padding:10px 12px}
   .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);backdrop-filter: blur(2px);pointer-events:auto}
   .modal .card{width:min(720px,92vw)}
-  .hpbar{position:fixed;left:50%;transform:translateX(-50%);top:8px;width:min(880px,92vw);height:16px;background:rgba(20,28,55,.8);border-radius:2px;border:1px solid rgba(120,160,255,.3);overflow:hidden}
+  .hpbar{position:fixed;left:50%;transform:translateX(-50%);top:42px;width:min(880px,92vw);height:16px;background:rgba(20,28,55,.8);border-radius:2px;border:1px solid rgba(120,160,255,.3);overflow:hidden;z-index:999}
   .hpfill{height:100%;background:linear-gradient(90deg,#ff4d7e,#ffd24a);box-shadow:0 0 12px rgba(255,77,126,.6) inset}
   .stageNote{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font-size:28px;padding:10px 16px;background:rgba(0,0,0,.35);border:1px solid rgba(120,160,255,.3);border-radius:2px;display:none;font-weight:700;text-shadow:0 0 15px var(--accent);}
   /* 모바일 조이스틱 */
@@ -1461,7 +1461,7 @@
       }
       else if(bw==='ROCKET'){
         const a=p.aim, spd=300*playerUp.projSpeed; // Speed up
-        spawnBullet({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:6,dmg:7.5*playerUp.dmg,color:'#ffd24a',hostile:false,ttl:2.4, explode:true}); // Damage buffed from 5.0 to 7.5 (60 damage, 1.5x sniper level)
+        spawnBullet({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:6,dmg:11.25*playerUp.dmg,color:'#ffd24a',hostile:false,ttl:2.4, explode:true}); // Damage buffed from 7.5 to 11.25 (1.5x increase)
         p.fireCd=0.65/ playerUp.rof; // Cooldown up
         // 픽셀 스타일 로켓 발사 이펙트
         for(let i=0;i<8;i++) spawnPart({x:p.x+Math.cos(p.aim+Math.PI)*15+rand(-2,2),y:p.y+Math.sin(p.aim+Math.PI)*15+rand(-2,2),ttl:0.2,color:'#ffd24a',sz:rand(3,6)});
