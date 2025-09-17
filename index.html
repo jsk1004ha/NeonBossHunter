@@ -364,7 +364,7 @@
       id:'HYDRA_CORE',
       name:'하이드라 코어',
       color:'#ff71ff',
-      baseHP:1300,
+      baseHP:1500,
       phases:[
         { name:'Orbit Orbs',     until:0.5,   script:'orbits' },
         { name:'Spawn Drones',   until:0.2,   script:'drones' },
@@ -375,7 +375,7 @@
       id:'TITAN_FORGE',
       name:'타이탄 포지',
       color:'#ffd24a',
-      baseHP:1600,
+      baseHP:2000,
       phases:[
         { name:'Meteor Hammers', until:0.6,   script:'meteors' },
         { name:'Hammer Barrage', until:0.3,   script:'hammer_barrage' },
@@ -447,6 +447,12 @@
       this.sniperReloading=false;
       this.sniperReloadTime=0;
       this.sniperMaxReloadTime=7.5;
+      // 로켓 탄창 시스템
+      this.rocketAmmo=4;
+      this.rocketMaxAmmo=4;
+      this.rocketReloading=false;
+      this.rocketReloadTime=0;
+      this.rocketMaxReloadTime=6.0;
       // 대쉬 시스템
       this.isDashPreviewing=false;
       this.dashPreviewX=0;
@@ -470,6 +476,15 @@
         if(this.sniperReloadTime <= 0) {
           this.sniperReloading = false;
           this.sniperAmmo = this.sniperMaxAmmo;
+        }
+      }
+      
+      // 로켓 재장전 처리
+      if(this.rocketReloading) {
+        this.rocketReloadTime -= dt;
+        if(this.rocketReloadTime <= 0) {
+          this.rocketReloading = false;
+          this.rocketAmmo = this.rocketMaxAmmo;
         }
       }
       
@@ -1460,9 +1475,32 @@
         for(let i=0;i<6;i++) spawnPart({x:p.x+Math.cos(p.aim)*12+rand(-4,4),y:p.y+Math.sin(p.aim)*12+rand(-4,4),ttl:0.15,color:'#ff71ff',sz:rand(2,5)});
       }
       else if(bw==='ROCKET'){
+        // 로켓 재장전 중인지 확인
+        if(p.rocketReloading) {
+          return; // 재장전 중이면 발사 불가
+        }
+        
+        // 로켓 탄창 시스템
+        if(p.rocketAmmo <= 0) {
+          // 탄창이 비어있으면 재장전 시작
+          p.rocketReloading = true;
+          p.rocketReloadTime = p.rocketMaxReloadTime;
+          return; // 이번 프레임에는 발사하지 않음
+        }
+        
+        // 탄약 소모
+        p.rocketAmmo--;
+        
+        // 마지막 로켓을 쏜 경우 자동으로 재장전 시작
+        if(p.rocketAmmo <= 0) {
+          p.rocketReloading = true;
+          p.rocketReloadTime = p.rocketMaxReloadTime;
+        }
+        
+        // 빠른 발사 속도 (저격총보다 빠름)
+        p.fireCd = 1.2 / playerUp.rof; // 1.2초 간격 (저격총 1.8초보다 빠름)
         const a=p.aim, spd=300*playerUp.projSpeed; // Speed up
         spawnBullet({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:6,dmg:11.25*playerUp.dmg,color:'#ffd24a',hostile:false,ttl:2.4, explode:true}); // Damage buffed from 7.5 to 11.25 (1.5x increase)
-        p.fireCd=0.65/ playerUp.rof; // Cooldown up
         // 픽셀 스타일 로켓 발사 이펙트
         for(let i=0;i<8;i++) spawnPart({x:p.x+Math.cos(p.aim+Math.PI)*15+rand(-2,2),y:p.y+Math.sin(p.aim+Math.PI)*15+rand(-2,2),ttl:0.2,color:'#ffd24a',sz:rand(3,6)});
       }
@@ -2065,6 +2103,73 @@
         ctx.fillStyle = '#ffffff';
         ctx.font = '10px monospace';
         ctx.fillText('AMMO', startX - 5, dashBarY - 2);
+      }
+      ctx.restore();
+    }
+    
+    // 로켓 탄약/재장전 표시
+    if(player && player.weapon === 'ROCKET') {
+      const dashBarX = W - 80; // 대쉬 바 위치 기준
+      const dashBarY = 50;
+      
+      ctx.save();
+      
+      if(player.rocketReloading) {
+        // 재장전 중 - 로딩 바 표시
+        const reloadRatio = 1 - (player.rocketReloadTime / player.rocketMaxReloadTime);
+        const barWidth = 60;
+        const barHeight = 6;
+        const barX = dashBarX - barWidth - 15;
+        const barY = dashBarY;
+        
+        // 배경
+        ctx.fillStyle = '#333333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        // 진행도
+        ctx.fillStyle = reloadRatio >= 1 ? '#ffd24a' : '#ff6666';
+        ctx.fillRect(barX, barY, barWidth * reloadRatio, barHeight);
+        // 테두리
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        // 라벨
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.fillText('RELOAD', barX, barY - 2);
+      } else {
+        // 일반 상태 - 로켓 개수 표시
+        const rocketSize = 8;
+        const rocketSpacing = 12;
+        const startX = dashBarX - (player.rocketMaxAmmo * rocketSpacing) - 15; // 대쉬 바 왼쪽에 위치
+        const startY = dashBarY + 3; // 대쉬 바와 같은 높이
+        
+        for(let i = 0; i < player.rocketMaxAmmo; i++) {
+          const x = startX + i * rocketSpacing;
+          const y = startY;
+          
+          if(i < player.rocketAmmo) {
+            // 남은 로켓 - 밝은 색
+            ctx.fillStyle = '#ffd24a';
+          } else {
+            // 사용된 로켓 - 어두운 색
+            ctx.fillStyle = '#333333';
+          }
+          
+          // 로켓 모양 그리기 (둥근 직사각형)
+          ctx.beginPath();
+          ctx.roundRect(x - rocketSize/2, y - rocketSize/3, rocketSize, rocketSize*2/3, 2);
+          ctx.fill();
+          
+          // 로켓 테두리
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+        
+        // 라벨
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.fillText('ROCKET', startX - 8, dashBarY - 2);
       }
       ctx.restore();
     }
