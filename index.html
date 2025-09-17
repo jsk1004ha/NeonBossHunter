@@ -378,7 +378,7 @@
       baseHP:1600,
       phases:[
         { name:'Meteor Hammers', until:0.6,   script:'meteors' },
-        { name:'Shockwaves',     until:0.3,   script:'shocks' },
+        { name:'Hammer Barrage', until:0.3,   script:'hammer_barrage' },
         { name:'Desperation',    until:0.0,   script:'desperate' }
       ]
     }
@@ -1008,53 +1008,111 @@
         }
       }
     },
-    // 타이탄 포지 Phase 2 - 충격파 패턴 확장 (회피 가능하게 수정)
-    shocks(b,dt){
-      if(!b._sk){ b._sk={cd:2.0, wave:0, shockType:0, comboTimer:0}; } // 초기 딜레이 2초 추가
-      const S=b._sk; S.cd-=dt; S.comboTimer+=dt;
+    // 타이탄 포지 Phase 2 - 해머 연타 패턴
+    hammer_barrage(b,dt){
+      if(!b._hm){ b._hm={cd:1.5, pattern:0, comboTimer:0, targetX:W*0.5, targetY:H*0.6}; }
+      const HM=b._hm; HM.cd-=dt; HM.comboTimer+=dt;
       
-      // 충격파 타입 변경 (4가지)
-      if(S.comboTimer > 6) { S.shockType = (S.shockType + 1) % 4; S.comboTimer = 0; }
+      // 패턴 변경 (3가지)
+      if(HM.comboTimer > 8) { HM.pattern = (HM.pattern + 1) % 3; HM.comboTimer = 0; }
       
-      if(S.cd<=0){
-        S.cd = 0.8 + S.shockType * 0.15; // 발사 간격 증가 (0.6->0.8, 0.1->0.15)
+      if(HM.cd<=0){
+        HM.cd = 1.8 + HM.pattern * 0.3; // 패턴별 다른 간격 (조금 더 느리게)
         
-        if(S.shockType === 0) { // 기본 링 - 더 많은 갭
-          const hasGap = S.wave % 2 === 0; // 갭 빈도 더 증가 (3->2, 50% 갭)
-          if(!hasGap){
-            spawnBullet({x:b.x,y:b.y,ring:true, r:30, vr:140, thick:4, dmg:1, color:'#ffd24a', hostile:true, ttl:3.2}); // 속도 더 감소 (160->140), 두께 더 감소 (6->4)
-          }
-        } else if(S.shockType === 1) { // 이중 링 - 속도와 두께 감소
-          const hasGap = S.wave % 3 === 0; // 이중 링도 갭 추가
-          if(!hasGap) {
-            spawnBullet({x:b.x,y:b.y,ring:true, r:25, vr:120, thick:4, dmg:1, color:'#ffd24a', hostile:true, ttl:3.5}); // 속도 더 감소 (140->120), 두께 감소 (5->4)
-            setTimeout(()=>{
-              if(boss && boss.alive){
-                spawnBullet({x:b.x,y:b.y,ring:true, r:25, vr:150, thick:4, dmg:1, color:'#ff71ff', hostile:true, ttl:3.0}); // 속도 더 감소 (170->150), 두께 감소 (5->4)
+        if(HM.pattern === 0) { // 직선 해머 스트라이크
+          // 플레이어를 향해 해머 발사
+          const angle = angleTo(b.x, b.y, player.x, player.y);
+          for(let i=0; i<3; i++) {
+            setTimeout(() => {
+              if(boss && boss.alive) {
+                const spread = (i-1) * 0.2; // 확산 줄임
+                spawnBullet({
+                  x: b.x + Math.cos(angle) * 30,
+                  y: b.y + Math.sin(angle) * 30,
+                  vx: Math.cos(angle + spread) * 250, // 속도 줄임
+                  vy: Math.sin(angle + spread) * 250,
+                  r: 7, // 크기 줄임
+                  dmg: 1,
+                  color: '#ffd24a',
+                  hostile: true,
+                  ttl: 2.5
+                });
               }
-            }, 500); // 딜레이 더 증가 (400->500)
+            }, i * 200); // 딜레이 조금 늘림
           }
-        } else if(S.shockType === 2) { // 가변속도 링 - 속도 범위 감소
-          const hasGap = S.wave % 4 === 0; // 가변속도 링도 갭 추가
-          if(!hasGap) {
-            const speed = 100 + Math.sin(S.wave*0.5)*40; // 속도 범위 더 감소 (120+50 -> 100+40)
-            spawnBullet({x:b.x,y:b.y,ring:true, r:35, vr:speed, thick:6, dmg:1, color:'#ff3b5c', hostile:true, ttl:4.0}); // 두께 감소 (8->6)
+        } else if(HM.pattern === 1) { // 교차 해머
+          // X자 패턴으로 4방향 발사
+          for(let i=0; i<4; i++) {
+            const angle = (i * TAU/4) + TAU/8; // 대각선 방향
+            spawnBullet({
+              x: b.x,
+              y: b.y,
+              vx: Math.cos(angle) * 200, // 속도 줄임
+              vy: Math.sin(angle) * 200,
+              r: 8, // 크기 줄임
+              dmg: 1.5,
+              color: '#ff9b3b',
+              hostile: true,
+              ttl: 3.0
+            });
           }
-        } else { // 섹터 충격파 - 각도 범위 감소
-          for(let i=0;i<4;i++){
-            const angle = i*TAU/4 + S.wave*0.1;
-            spawnBullet({x:b.x,y:b.y,ring:true, r:30, vr:150, thick:4, dmg:1, color:'#49f3ff', hostile:true, ttl:2.8, sector:{start:angle-0.4, end:angle+0.4}}); // 속도 감소 (190->150), 두께 감소 (6->4), 각도 증가 (0.3->0.4)
+        } else { // 망치 폭격
+          // 랜덤 위치에 망치들이 떨어짐
+          for(let i=0; i<4; i++) { // 개수 줄임
+            setTimeout(() => {
+              if(boss && boss.alive) {
+                const targetX = rand(120, W-120); // 범위 줄임
+                const targetY = rand(H*0.5, H-120);
+                
+                // 경고 표시 파티클
+                for(let j=0; j<6; j++) {
+                  spawnPart({
+                    x: targetX + rand(-20, 20),
+                    y: targetY + rand(-20, 20),
+                    ttl: 1.0, // 경고 시간 늘림
+                    color: '#ff3b5c',
+                    sz: rand(4, 8)
+                  });
+                }
+                
+                // 1초 후 망치 투하
+                setTimeout(() => {
+                  if(boss && boss.alive) {
+                    spawnBullet({
+                      x: targetX,
+                      y: targetY - 50,
+                      vx: 0,
+                      vy: 350, // 속도 줄임
+                      r: 10, // 크기 줄임
+                      dmg: 2,
+                      color: '#ffd24a',
+                      hostile: true,
+                      ttl: 2.0
+                    });
+                  }
+                }, 1000); // 경고 시간 늘림
+              }
+            }, i * 300); // 간격 늘림
           }
         }
-        S.wave++;
       }
       
-      // 추가: 지진 효과 (작은 탄환 흩뿌리기) - 빈도 감소
-      if(Math.floor(S.comboTimer*3)%12===0 && chance(0.02)){ // 빈도 감소 (9->12), 확률 감소 (0.04->0.02)
-        const N=12; const speed=60; // 탄환 수 감소 (16->12), 속도 감소 (80->60)
+      // 추가: 작은 파편 흩뿌리기 (빈도 줄임)
+      if(Math.floor(HM.comboTimer*2)%10===0 && chance(0.03)){ // 빈도 줄임
+        const N=6; const speed=80; // 개수, 속도 줄임
         for(let i=0;i<N;i++){
-          const a = i/N*TAU + Math.random()*0.5;
-          spawnBullet({x:b.x+rand(-20,20),y:b.y+rand(-20,20), vx:Math.cos(a)*speed, vy:Math.sin(a)*speed, r:3, dmg:1, color:'#ffd24a', hostile:true});
+          const a = i/N*TAU + Math.random()*0.4;
+          spawnBullet({
+            x: b.x + rand(-20, 20),
+            y: b.y + rand(-20, 20),
+            vx: Math.cos(a) * speed,
+            vy: Math.sin(a) * speed,
+            r: 3,
+            dmg: 0.5, // 데미지 줄임
+            color: '#ffaa44',
+            hostile: true,
+            ttl: 1.2
+          });
         }
       }
     },
@@ -1121,9 +1179,13 @@
         }
       }
       
-      // 충격파 - 더 빠르게
+      // 회전 탄환 - 더 빠르게 (충격파 대신)
       if(Math.floor(b._dp.t*3)%4===0 && chance(0.05 * b._dp.chaos)){
-        spawnBullet({x:b.x,y:b.y, ring:true, r:40, vr:200+b._dp.chaos*30, thick:6, dmg:1, color:'#ffd24a',hostile:true, ttl:2.8});
+        const N=16; const speed=180+b._dp.chaos*20;
+        for(let i=0;i<N;i++){
+          const a = i/N*TAU + b._dp.t*0.5;
+          spawnBullet({x:b.x,y:b.y, vx:Math.cos(a)*speed, vy:Math.sin(a)*speed, r:6, dmg:1, color:'#ffd24a',hostile:true, ttl:3.0});
+        }
       }
       
       // 새로운 패턴: 혼돈 버스트
