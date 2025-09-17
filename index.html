@@ -22,8 +22,8 @@
   }
   body{margin:0;background:radial-gradient(1200px 600px at 50% 30%,#101836 0%,#0a0f1f 50%,#050811 100%);color:var(--txt);font-family:var(--font-clean);overscroll-behavior:none;}
   #uiLayer{position:fixed;inset:0;pointer-events:none;}
-  canvas{display:block;margin:0 auto;max-width:100vw;max-height:100vh;touch-action:none;image-rendering: pixelated;}
-  .topbar{position:fixed;left:0;right:0;top:0;display:flex;justify-content:center;gap:12px;padding:8px 12px;pointer-events:auto}
+  canvas{display:block;margin:40px auto 0;max-width:100vw;max-height:calc(100vh - 40px);touch-action:none;image-rendering: pixelated;}
+  .topbar{position:fixed;left:0;right:0;top:0;display:flex;justify-content:center;gap:12px;padding:8px 12px;pointer-events:auto;background:rgba(16,24,48,.9);backdrop-filter: blur(6px);border-bottom:1px solid rgba(120,160,255,.25);z-index:1000}
   .pill{background:rgba(16,24,48,.7);backdrop-filter: blur(6px);border:1px solid rgba(80,140,255,.25);border-radius:2px;padding:6px 12px;box-shadow: var(--neonShadow);display:flex;align-items:center;gap:8px;}
   .btn{pointer-events:auto;cursor:pointer;user-select:none}
   .btn:hover{filter:brightness(1.1)}
@@ -441,6 +441,12 @@
       // 플라즈마 캐논용
       this.chargeTime=0;
       this.isCharging=false;
+      // 저격총 탄창 시스템
+      this.sniperAmmo=5;
+      this.sniperMaxAmmo=5;
+      this.sniperReloading=false;
+      this.sniperReloadTime=0;
+      this.sniperMaxReloadTime=7.5;
       // 대쉬 시스템
       this.isDashPreviewing=false;
       this.dashPreviewX=0;
@@ -457,6 +463,15 @@
       
       // 대쉬 쿨다운 감소
       this.dashCd = Math.max(0, this.dashCd - dt);
+      
+      // 저격총 재장전 처리
+      if(this.sniperReloading) {
+        this.sniperReloadTime -= dt;
+        if(this.sniperReloadTime <= 0) {
+          this.sniperReloading = false;
+          this.sniperAmmo = this.sniperMaxAmmo;
+        }
+      }
       
       // 대쉬 입력 처리 (Left Shift)
       const isDashPressed = keyState.has('ShiftLeft');
@@ -567,12 +582,12 @@
       }
       
       if(this.ifr>0 || !this.alive) return;
-      this.hp-=dmg; this.ifr=1.0;
+      this.hp = Math.max(0, Math.floor(this.hp - dmg)); this.ifr=1.0;
       vibrate(40);
       hitstop(100);
       for(let i=0;i<15;i++) spawnPart({x:this.x+rand(-10,10),y:this.y+rand(-10,10),ttl:rand(0.3,0.6),color:'#ff3b5c',sz:rand(4,9)});
       if(this.hp<=0){ this.alive=false; gameOver(); }
-      document.getElementById('playerHpLabel').textContent = this.hp;
+      document.getElementById('playerHpLabel').textContent = Math.floor(this.hp);
     }
   }
 
@@ -649,7 +664,7 @@
         for(let i=0;i<20;i++) spawnOrb(this.x+rand(-30,30),this.y+rand(-30,30), rand(2,4));
         
         // 체력 회복
-        player.hp = Math.min(player.hpMax, player.hp + player.hpMax * 0.5); // 50% 체력 회복
+        player.hp = Math.min(player.hpMax, Math.floor(player.hp + player.hpMax * 0.5)); // 50% 체력 회복 (정수로)
         
         // 직접 업그레이드 화면 표시
         setTimeout(() => {
@@ -1360,7 +1375,7 @@
       }
       
       if(p.isCharging) {
-        p.chargeTime += dt;
+        p.chargeTime += dt * 1.5; // Charge speed increased by 1.5x
         p.chargeTime = Math.min(2.0, p.chargeTime); // 최대 2초 충전
         
         // 충전 이펙트
@@ -1422,7 +1437,7 @@
     if(wantsFire && p.fireCd<=0){
       if(bw==='LASER'){
         // 지속빔: 짧게 펄스 형태(성능상)
-        const len=900, seg=22, dmg=0.8*playerUp.dmg; // Damage buffed from 0.6 to 0.8
+        const len=900, seg=22, dmg=1.4*playerUp.dmg; // Damage buffed from 0.8 to 1.4
         for(let i=0;i<seg;i++){
           const d=i/seg*len;
           const px = p.x + Math.cos(p.aim)*d;
@@ -1435,7 +1450,7 @@
       }
       else if(bw==='SHOTGUN'){
         const K=6, spread=0.22; // Spread reduced for tighter pattern
-        const spd=380*playerUp.projSpeed, dmg=1.8*playerUp.dmg; // Damage buffed from 1.0 to 1.8
+        const spd=380*playerUp.projSpeed, dmg=2.4*playerUp.dmg; // Damage buffed from 1.8 to 2.4
         for(let i=0;i<K;i++){
           const a=p.aim + rand(-spread,spread);
           spawnBullet({x:p.x+Math.cos(a)*16,y:p.y+Math.sin(a)*16,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:4,dmg,color:'#ff71ff',hostile:false,ttl:1.3}); // TTL increased for range buff
@@ -1446,7 +1461,7 @@
       }
       else if(bw==='ROCKET'){
         const a=p.aim, spd=300*playerUp.projSpeed; // Speed up
-        spawnBullet({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:6,dmg:5.0*playerUp.dmg,color:'#ffd24a',hostile:false,ttl:2.4, explode:true}); // Damage buffed from 4.2 to 5.0
+        spawnBullet({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:6,dmg:7.5*playerUp.dmg,color:'#ffd24a',hostile:false,ttl:2.4, explode:true}); // Damage buffed from 5.0 to 7.5 (60 damage, 1.5x sniper level)
         p.fireCd=0.65/ playerUp.rof; // Cooldown up
         // 픽셀 스타일 로켓 발사 이펙트
         for(let i=0;i<8;i++) spawnPart({x:p.x+Math.cos(p.aim+Math.PI)*15+rand(-2,2),y:p.y+Math.sin(p.aim+Math.PI)*15+rand(-2,2),ttl:0.2,color:'#ffd24a',sz:rand(3,6)});
@@ -1525,7 +1540,30 @@
         }
       }
       else if(bw==='SNIPER'){
-        p.fireCd = 2.5 / playerUp.rof; // 매우 느린 연사 (2.5초 간격으로 증가)
+        // 저격총 재장전 중인지 확인
+        if(p.sniperReloading) {
+          return; // 재장전 중이면 발사 불가
+        }
+        
+        // 저격총 탄창 시스템
+        if(p.sniperAmmo <= 0) {
+          // 탄창이 비어있으면 긴 재장전 시작
+          p.sniperReloading = true;
+          p.sniperReloadTime = p.sniperMaxReloadTime;
+          return; // 이번 프레임에는 발사하지 않음
+        }
+        
+        // 탄약 소모
+        p.sniperAmmo--;
+        
+        // 마지막 총알을 쏜 경우 자동으로 재장전 시작
+        if(p.sniperAmmo <= 0) {
+          p.sniperReloading = true;
+          p.sniperReloadTime = p.sniperMaxReloadTime;
+        }
+        
+        // 일반 발사 속도 (탄창 내 발사)
+        p.fireCd = 1.8 / playerUp.rof; // 빠른 연사 (1.8초 간격으로 감소)
         const a = p.aim; // 정확한 조준
         const spd = 1200 * playerUp.projSpeed; // 매우 빠른 탄속
         const dmg = 50 * playerUp.dmg; // 높은 기본 데미지 (2x buff: 25->50)
@@ -1577,7 +1615,7 @@
     boss = new Boss(BOSSES[stageIndex]);
     stageStartTime=now();
     document.getElementById('bossHp').style.display='block';
-    document.getElementById('playerHpLabel').textContent = player.hp;
+    document.getElementById('playerHpLabel').textContent = Math.floor(player.hp);
     updateHpBar();
     hideStartMenu();
     loop();
@@ -1779,8 +1817,8 @@
         if(!enemyBullet.alive || !enemyBullet.hostile || !enemyBullet.homing) continue;
         
         if(dist2(playerBullet.x, playerBullet.y, enemyBullet.x, enemyBullet.y) < (playerBullet.r + enemyBullet.r) * (playerBullet.r + enemyBullet.r)){
-          // 부메랑은 유도탄을 파괴하지만 계속 진행
-          if(playerBullet.boomerang) {
+          // 부메랑과 플라즈마는 유도탄을 파괴하지만 계속 진행
+          if(playerBullet.boomerang || playerBullet.plasma) {
             enemyBullet.alive = false;
             // 유도탄 파괴 이펙트만 생성
             for(let k=0; k<5; k++){
@@ -1962,6 +2000,73 @@
       ctx.font='16px monospace';
       ctx.fillText('DEBUG MODE - INVINCIBLE', 10, 40);
       ctx.font='12px monospace'; // 폰트 복원
+    }
+    
+    // 저격총 탄약/재장전 표시
+    if(player && player.weapon === 'SNIPER') {
+      const dashBarX = W - 80; // 대쉬 바 위치 기준
+      const dashBarY = 50;
+      
+      ctx.save();
+      
+      if(player.sniperReloading) {
+        // 재장전 중 - 로딩 바 표시
+        const reloadRatio = 1 - (player.sniperReloadTime / player.sniperMaxReloadTime);
+        const barWidth = 60;
+        const barHeight = 6;
+        const barX = dashBarX - barWidth - 15;
+        const barY = dashBarY;
+        
+        // 배경
+        ctx.fillStyle = '#333333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        // 진행도
+        ctx.fillStyle = reloadRatio >= 1 ? '#ffaa00' : '#ff6666';
+        ctx.fillRect(barX, barY, barWidth * reloadRatio, barHeight);
+        // 테두리
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        // 라벨
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.fillText('RELOAD', barX, barY - 2);
+      } else {
+        // 일반 상태 - 탄약 개수 표시
+        const bulletSize = 6;
+        const bulletSpacing = 10;
+        const startX = dashBarX - (player.sniperMaxAmmo * bulletSpacing) - 15; // 대쉬 바 왼쪽에 위치
+        const startY = dashBarY + 3; // 대쉬 바와 같은 높이
+        
+        for(let i = 0; i < player.sniperMaxAmmo; i++) {
+          const x = startX + i * bulletSpacing;
+          const y = startY;
+          
+          if(i < player.sniperAmmo) {
+            // 남은 탄약 - 밝은 색
+            ctx.fillStyle = '#ffaa00';
+          } else {
+            // 사용된 탄약 - 어두운 색
+            ctx.fillStyle = '#333333';
+          }
+          
+          // 총알 모양 그리기 (작은 원형)
+          ctx.beginPath();
+          ctx.arc(x, y, bulletSize/2, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // 총알 테두리
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+        
+        // 라벨
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.fillText('AMMO', startX - 5, dashBarY - 2);
+      }
+      ctx.restore();
     }
   }
 
@@ -2332,9 +2437,8 @@
     {id:'ROF', text:'연사속도 +15%', apply:()=>playerUp.rof*=1.15},
     {id:'SPD', text:'탄속 +20%', apply:()=>playerUp.projSpeed*=1.2},
     {id:'RANGE', text:'사거리 +15%', apply:()=>playerUp.range*=1.15},
-    {id:'HEART', text:'최대 체력 +1 (즉시 회복)', apply:()=>{player.hpMax++; player.hp++; playerUp.survivability*=1.05}},
+    {id:'HEART', text:'최대 체력 +1 (즉시 회복)', apply:()=>{player.hpMax += 1; player.hp = Math.min(player.hp + 1, player.hpMax); playerUp.survivability*=1.05}},
     {id:'SPECIAL_LASER', text:'레이저 과열 내성↑(쿨 -15%)', apply:()=>playerUp.special.laserCool = (playerUp.special.laserCool||1)*0.85},
-    {id:'SPECIAL_MELEE', text:'근접 경직 강화(+10%)', apply:()=>playerUp.special.stagger = (playerUp.special.stagger||0)+0.1},
     {id:'CORE_MAGNET', text:'코어 흡입 강화', apply:()=>playerUp.special.magnet = (playerUp.special.magnet||0)+1}
   ];
   function presentUpgradeChoices(){
