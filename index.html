@@ -432,7 +432,7 @@
     {id:'PLASMA', name:'플라즈마', desc:'충전식 고위력 관통탄', type:'ranged', move:0.90},
     {id:'BOOMERANG', name:'부메랑', desc:'되돌아오는 곡선 투사체', type:'ranged', move:1.05},
     {id:'SMG', name:'기관단총', desc:'초고속 연사, 기동성 특화', type:'ranged', move:1.25},
-    {id:'SNIPER', name:'저격총', desc:'장거리 고위력, 정밀 사격', type:'ranged', move:0.75},
+    {id:'SNIPER', name:'저격총', desc:'장거리 고위력, 정밀 사격', type:'ranged', move:0.85},
     {id:'DEBUG_CANNON', name:'🔧 디버그 캐논', desc:'[DEV] 무한 관통 초고위력 레이저', type:'ranged', move:1.50, debug:true}
   ];
   let chosenWeapon = 'LASER';
@@ -571,8 +571,8 @@
       this.chargeTime=0;
       this.isCharging=false;
       // 저격총 탄창 시스템
-      this.sniperAmmo=5;
-      this.sniperMaxAmmo=5;
+      this.sniperAmmo=7;
+      this.sniperMaxAmmo=7;
       this.sniperReloading=false;
       this.sniperReloadTime=0;
       this.sniperMaxReloadTime=7.5;
@@ -2309,7 +2309,7 @@
         p.fireCd = 1.8 / playerUp.rof; // 빠른 연사 (1.8초 간격으로 감소)
         const a = p.aim; // 정확한 조준
         const spd = 1200 * playerUp.projSpeed; // 매우 빠른 탄속
-        const dmg = 65 * playerUp.dmg; // 1.3배 버프: 50->65
+        const dmg = 75 * playerUp.dmg; // 1.3배 버프: 50->65
         const range = 2.5 * playerUp.range; // 긴 사정거리
         
         spawnBullet({
