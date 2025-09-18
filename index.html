@@ -1880,22 +1880,22 @@
           };
           DC.rifts.push(rift);
           
-          // 균열에서 탄환 발사
+          // 균열에서 탄환 발사 (탄환 수 감소)
           setTimeout(()=>{
             if(boss && boss.alive){
-              const bulletCount = 8 + DC.chaos*2;
+              const bulletCount = 4 + Math.floor(DC.chaos*0.5); // 8+DC.chaos*2 -> 4+DC.chaos*0.5로 대폭 감소
               for(let j=0; j<bulletCount; j++){
-                const spreadAngle = rift.angle + (j/(bulletCount-1) - 0.5) * Math.PI;
+                const spreadAngle = rift.angle + (j/(bulletCount-1) - 0.5) * Math.PI * 0.5; // 퍼짐도 감소
                 spawnBullet({
                   x: rift.x + Math.cos(rift.angle)*(j-bulletCount/2)*15,
                   y: rift.y + Math.sin(rift.angle)*(j-bulletCount/2)*15,
-                  vx: Math.cos(spreadAngle)*300,
-                  vy: Math.sin(spreadAngle)*300,
-                  r: 7,
-                  dmg: 2.5,
+                  vx: Math.cos(spreadAngle)*250, // 속도 감소
+                  vy: Math.sin(spreadAngle)*250,
+                  r: 6,
+                  dmg: 2.0,
                   color: '#4B0082',
                   hostile: true,
-                  ttl: 5.0
+                  ttl: 4.0
                 });
               }
             }
@@ -1913,38 +1913,38 @@
         }
       }
       
-      // 3. 시공간 붕괴 - 전체 화면 패턴
-      if(Math.floor(DC.t*0.5)%12===0 && chance(0.1 * DC.chaos)){
+      // 3. 시공간 붕괴 - 전체 화면 패턴 (탄막 대폭 감소)
+      if(Math.floor(DC.t*0.3)%15===0 && chance(0.05 * DC.chaos)){ // 빈도 감소: 0.5->0.3, 12->15, 0.1->0.05
         // 화면 전체에 무작위 탄환 폭발
-        for(let i=0; i<30 + DC.chaos*10; i++){
+        for(let i=0; i<8 + Math.floor(DC.chaos*2); i++){ // 30+DC.chaos*10 -> 8+DC.chaos*2로 대폭 감소
           setTimeout(()=>{
             if(boss && boss.alive){
               const x = rand(50, W-50);
               const y = rand(50, H-50);
               
-              // 폭발 탄환들
-              for(let j=0; j<8; j++){
-                const a = j/8*TAU;
+              // 폭발 탄환들 (수 감소)
+              for(let j=0; j<4; j++){ // 8->4로 감소
+                const a = j/4*TAU;
                 spawnBullet({
                   x: x,
                   y: y,
-                  vx: Math.cos(a)*250,
-                  vy: Math.sin(a)*250,
-                  r: 5,
-                  dmg: 1.5,
+                  vx: Math.cos(a)*200, // 속도 감소
+                  vy: Math.sin(a)*200,
+                  r: 4, // 크기 감소
+                  dmg: 1.2, // 데믴지 감소
                   color: '#8B00FF',
                   hostile: true,
-                  ttl: 3.0
+                  ttl: 2.5 // TTL 감소
                 });
               }
             }
-          }, i*100);
+          }, i*150); // 딜레이 증가
         }
       }
       
-      // 4. 보스 중심 스파이럴 (지속적)
-      if(Math.floor(DC.t*3)%3===0 && chance(0.2)){
-        const N=20; const speed=160 + DC.chaos*20;
+      // 4. 보스 중심 스파이럴 (지속적) - 탄환 수 감소
+      if(Math.floor(DC.t*2)%4===0 && chance(0.15)){ // 빈도 조정: 3->2, 3->4, 0.2->0.15
+        const N=12; const speed=140 + DC.chaos*15; // 탄환 수 감소: 20->12, 속도 감소
         for(let i=0;i<N;i++){
           const a = i/N*TAU + DC.t*2;
           spawnBullet({
@@ -2648,35 +2648,106 @@
         }
       }
       
-      // 블랙홀 렌더링
+      // 블랙홀 렌더링 (더 화려하게)
       if(boss._dc && boss._dc.blackholes) {
         for(const bh of boss._dc.blackholes) {
           ctx.save();
           
-          // 블랙홀 중심 (검은색)
-          ctx.fillStyle = '#000000';
-          ctx.shadowBlur = 20;
+          // 시간에 따른 애니메이션 값
+          const time = now() * 0.001;
+          const pulse = Math.sin(time * 3) * 0.5 + 0.5;
+          const rotation = time * 2;
+          
+          // 배경 왜곡 링들 (더 많고 화려하게)
+          ctx.globalAlpha = 0.4;
+          for(let i = 1; i <= 8; i++) {
+            const radiusMultiplier = 0.4 + i * 0.15;
+            const alpha = (8 - i) / 8 * 0.6;
+            ctx.globalAlpha = alpha;
+            
+            // 다양한 색상의 링
+            const colors = ['#8B00FF', '#4B0082', '#9400D3', '#FF00FF', '#DA70D6'];
+            ctx.strokeStyle = colors[i % colors.length];
+            ctx.lineWidth = 3 + pulse * 2;
+            ctx.shadowBlur = 15 + pulse * 10;
+            ctx.shadowColor = ctx.strokeStyle;
+            ctx.setLineDash([5, 10]);
+            ctx.lineDashOffset = rotation * (i % 2 === 0 ? 1 : -1) * 20;
+            
+            ctx.beginPath();
+            ctx.arc(bh.x, bh.y, bh.radius * radiusMultiplier, 0, TAU);
+            ctx.stroke();
+          }
+          
+          // 회전하는 나선 효과
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 0.7;
+          ctx.lineWidth = 2;
+          for(let spiral = 0; spiral < 3; spiral++) {
+            ctx.strokeStyle = ['#8B00FF', '#FF00FF', '#4B0082'][spiral];
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = ctx.strokeStyle;
+            ctx.beginPath();
+            
+            const spiralOffset = spiral * TAU / 3 + rotation;
+            for(let angle = 0; angle < TAU * 3; angle += 0.1) {
+              const r = bh.radius * 0.3 + (angle / (TAU * 3)) * bh.radius * 0.4;
+              const x = bh.x + Math.cos(angle + spiralOffset) * r;
+              const y = bh.y + Math.sin(angle + spiralOffset) * r;
+              
+              if(angle === 0) ctx.moveTo(x, y);
+              else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+          }
+          
+          // 블랙홀 중심부 (더 강렬하게)
+          const gradient = ctx.createRadialGradient(bh.x, bh.y, 0, bh.x, bh.y, bh.radius * 0.4);
+          gradient.addColorStop(0, '#000000');
+          gradient.addColorStop(0.7, '#1a0033');
+          gradient.addColorStop(1, '#8B00FF');
+          
+          ctx.fillStyle = gradient;
+          ctx.shadowBlur = 30 + pulse * 15;
           ctx.shadowColor = '#8B00FF';
           ctx.beginPath();
-          ctx.arc(bh.x, bh.y, bh.radius * 0.3, 0, TAU);
+          ctx.arc(bh.x, bh.y, bh.radius * 0.4, 0, TAU);
           ctx.fill();
           
-          // 블랙홀 가장자리 (보라색 링)
-          ctx.strokeStyle = '#8B00FF';
-          ctx.lineWidth = 8;
-          ctx.shadowBlur = 15;
-          ctx.shadowColor = '#8B00FF';
+          // 중심 핵 (밝은 점)
+          ctx.fillStyle = '#FFFFFF';
+          ctx.shadowBlur = 40;
+          ctx.shadowColor = '#FF00FF';
           ctx.beginPath();
-          ctx.arc(bh.x, bh.y, bh.radius * 0.7, 0, TAU);
-          ctx.stroke();
+          ctx.arc(bh.x, bh.y, 3 + pulse * 2, 0, TAU);
+          ctx.fill();
           
-          // 외부 왜곡 효과
-          ctx.globalAlpha = 0.3;
-          ctx.strokeStyle = '#4B0082';
-          ctx.lineWidth = 2;
-          for(let i = 1; i <= 3; i++) {
+          // 주변 파티클 효과 (번개같은 선들)
+          ctx.globalAlpha = 0.8;
+          ctx.lineWidth = 1;
+          for(let i = 0; i < 12; i++) {
+            const angle = (i / 12) * TAU + rotation;
+            const length = bh.radius * (0.5 + pulse * 0.3);
+            
+            ctx.strokeStyle = ['#8B00FF', '#FF00FF', '#DA70D6'][i % 3];
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = ctx.strokeStyle;
+            
             ctx.beginPath();
-            ctx.arc(bh.x, bh.y, bh.radius * (0.8 + i*0.1), 0, TAU);
+            ctx.moveTo(bh.x + Math.cos(angle) * bh.radius * 0.3, 
+                      bh.y + Math.sin(angle) * bh.radius * 0.3);
+            
+            // 지그재그 라인
+            for(let j = 1; j <= 5; j++) {
+              const progress = j / 5;
+              const zigzag = Math.sin(progress * TAU * 2) * 15;
+              const perpAngle = angle + Math.PI / 2;
+              const x = bh.x + Math.cos(angle) * length * progress + 
+                       Math.cos(perpAngle) * zigzag;
+              const y = bh.y + Math.sin(angle) * length * progress + 
+                       Math.sin(perpAngle) * zigzag;
+              ctx.lineTo(x, y);
+            }
             ctx.stroke();
           }
           
