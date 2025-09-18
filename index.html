@@ -110,8 +110,27 @@
         <div id="keyList"></div>
       </div>
       <div class="weapon">
-        <b>옵션</b>
-        <label><input type="checkbox" id="optColorBlind"> 색약 보조(고대비 탄색)</label><br/>
+        <b>그래픽 설정</b>
+        <label>그래픽 모드:</label>
+        <select id="optGraphicsMode">
+          <option value="fancy">화려함 (모든 효과)</option>
+          <option value="simple">단순함 (기본 효과)</option>
+          <option value="performance">최적화 (최소 효과)</option>
+        </select>
+        <div class="tiny">화려함: 모든 파티클과 시각 효과, 단순함: 기본 효과만, 최적화: 성능 우선</div><br/>
+        
+        <label>색약 보조:</label>
+        <select id="optColorBlindMode">
+          <option value="none">없음</option>
+          <option value="protanopia">적색맹 (Protanopia)</option>
+          <option value="deuteranopia">녹색맹 (Deuteranopia)</option>
+          <option value="tritanopia">청색맹 (Tritanopia)</option>
+          <option value="high_contrast">고대비 모드</option>
+        </select>
+        <div class="tiny">색상 구분이 어려운 경우 대체 색상으로 표시합니다</div>
+      </div>
+      <div class="weapon">
+        <b>기타 옵션</b>
         <label><input type="checkbox" id="optShowHitbox"> 히트박스 표시</label><br/>
         <label><input type="checkbox" id="optShowFps"> FPS 표시</label><br/>
         <label><input type="checkbox" id="optVibrate"> 모바일 진동(Hit/피격)</label>
@@ -183,7 +202,9 @@
     bestStage:0,
     settings:{
       colorBlind:false, showHitbox:false, showFps:false, vibrate:true,
-      debugMode:false, // 디버그 모드 - 무적 (코드에서만 변경 가능)
+      debugMode:true, // 디버그 모드 - 무적 (코드에서만 변경 가능)
+      graphicsMode:'fancy', // 'fancy', 'simple', 'performance'
+      colorBlindMode:'none', // 'none', 'protanopia', 'deuteranopia', 'tritanopia', 'high_contrast'
       keys:{up:'KeyW',down:'KeyS',left:'KeyA',right:'KeyD',fire:'MouseLeft',dash:'ShiftLeft',pause:'Escape'}
     },
     unlockedWeapons:{ LASER:true, SHOTGUN:true, ROCKET:true, MINIGUN:true, PLASMA:true, BOOMERANG:true, SMG:true, SNIPER:true, DEBUG_CANNON:true }
@@ -214,11 +235,82 @@
   // ===== 설정 전역 =====
   let settings = save.settings;
   function refreshUIFromSave(){
-    document.getElementById('optColorBlind').checked = settings.colorBlind;
+    // 기존 설정들
     document.getElementById('optShowHitbox').checked = settings.showHitbox;
     document.getElementById('optShowFps').checked = settings.showFps;
     document.getElementById('optVibrate').checked = settings.vibrate;
+    
+    // 새로운 그래픽 및 색약 보조 설정
+    document.getElementById('optGraphicsMode').value = settings.graphicsMode || 'fancy';
+    document.getElementById('optColorBlindMode').value = settings.colorBlindMode || 'none';
+    
     document.getElementById('bestLabel').textContent = save.bestTimeSec ? `${save.bestTimeSec.toFixed(1)}s (Stage ${save.bestStage})` : '-';
+  }
+
+  // ===== 색약 보조 및 그래픽 모드 함수들 =====
+  function getColorBlindSafeColor(originalColor, colorType = 'bullet') {
+    if (settings.colorBlindMode === 'none') return originalColor;
+    
+    // 색상별 색약 보조 매핑
+    const colorMaps = {
+      'protanopia': {
+        '#ff71ff': '#4da6ff', // 마젠타 -> 파랑
+        '#49f3ff': '#ffff66', // 시아안 -> 노랑
+        '#ffd24a': '#66ff66', // 노랑 -> 밝은 초록
+        '#ff3b5c': '#0080ff', // 빨강 -> 파랑
+        '#8B00FF': '#0066cc', // 보라 -> 진한 파랑
+        '#4B0082': '#003399'  // 남색 -> 더 진한 파랑
+      },
+      'deuteranopia': {
+        '#ff71ff': '#ff9933', // 마젠타 -> 주황
+        '#49f3ff': '#3366ff', // 시아안 -> 파랑
+        '#ffd24a': '#ffff00', // 노랑 -> 순수 노랑
+        '#ff3b5c': '#ff6600', // 빨강 -> 주황
+        '#8B00FF': '#6600cc', // 보라 -> 진한 보라
+        '#4B0082': '#330099'  // 남색 -> 진한 보라
+      },
+      'tritanopia': {
+        '#ff71ff': '#ff3366', // 마젠타 -> 분홍
+        '#49f3ff': '#66ffcc', // 시아안 -> 밝은 초록
+        '#ffd24a': '#ff9900', // 노랑 -> 주황
+        '#ff3b5c': '#cc0033', // 빨강 -> 진한 빨강
+        '#8B00FF': '#990066', // 보라 -> 진한 분홍
+        '#4B0082': '#660033'  // 남색 -> 진한 자주
+      },
+      'high_contrast': {
+        '#ff71ff': '#ffffff', // 흰색
+        '#49f3ff': '#ffff00', // 노랑
+        '#ffd24a': '#ff0000', // 빨강
+        '#ff3b5c': '#00ff00', // 초록
+        '#8B00FF': '#ffffff', // 흰색
+        '#4B0082': '#ff00ff', // 마젠타
+        '#ffaa00': '#00ffff', // 시아안
+        '#ff4444': '#ffffff'  // 흰색
+      }
+    };
+    
+    const map = colorMaps[settings.colorBlindMode];
+    return map && map[originalColor] ? map[originalColor] : originalColor;
+  }
+  
+  function shouldShowEffect(effectType) {
+    if (settings.graphicsMode === 'performance') {
+      // 성능 모드: 최소한의 효과만
+      return ['basic_bullet', 'basic_explosion'].includes(effectType);
+    } else if (settings.graphicsMode === 'simple') {
+      // 단순 모드: 기본 효과들
+      return !['advanced_particles', 'complex_shadows', 'distortion_effects'].includes(effectType);
+    }
+    // 화려함 모드: 모든 효과
+    return true;
+  }
+  
+  function getEffectIntensity() {
+    switch(settings.graphicsMode) {
+      case 'performance': return 0.3;
+      case 'simple': return 0.6;
+      default: return 1.0; // fancy
+    }
   }
 
   // ===== 캔버스/스케일 =====
@@ -406,17 +498,24 @@
 
   function spawnBullet(b){
     const o = bulletPool.pop() || {};
-    Object.assign(o,b,{alive:true,ttl:b.ttl??6});
+    
+    // 색약 보조 색상 적용
+    const safeColor = getColorBlindSafeColor(b.color || '#ffffff', 'bullet');
+    
+    Object.assign(o,b,{alive:true,ttl:b.ttl??6,color:safeColor});
     bullets.push(o);
 
-    // 이펙트 강화: 보스 탄환 발사 시 파티클 효과 추가
-    if (b.hostile) {
-      for(let i=0; i<2; i++) {
+    // 이펙트 강화: 보스 탄환 발사 시 파티클 효과 추가 (그래픽 모드 고려)
+    if (b.hostile && shouldShowEffect('bullet_spawn')) {
+      const intensity = getEffectIntensity();
+      const particleCount = Math.floor(2 * intensity);
+      
+      for(let i=0; i<particleCount; i++) {
         spawnPart({
           x: b.x, y: b.y,
-          ttl: rand(0.1, 0.3),
-          color: b.color,
-          sz: rand(2, 4),
+          ttl: rand(0.1, 0.3) * intensity,
+          color: safeColor,
+          sz: rand(2, 4) * intensity,
           vx: (b.vx || 0) * 0.1 + rand(-30, 30),
           vy: (b.vy || 0) * 0.1 + rand(-30, 30)
         });
@@ -426,8 +525,23 @@
     return o;
   }
   function spawnPart(p){
+    // 그래픽 모드에 따른 파티클 제한
+    if(settings.graphicsMode === 'performance' && Math.random() > 0.3) {
+      return null; // 70% 파티클 제거
+    } else if(settings.graphicsMode === 'simple' && Math.random() > 0.6) {
+      return null; // 40% 파티클 제거
+    }
+    
     const o = partPool.pop() || {};
-    Object.assign(o,p,{alive:true,ttl:p.ttl??0.6});
+    const safeColor = getColorBlindSafeColor(p.color || '#ffffff', 'particle');
+    const intensity = getEffectIntensity();
+    
+    Object.assign(o, p, {
+      alive: true,
+      ttl: (p.ttl ?? 0.6) * intensity,
+      color: safeColor,
+      sz: (p.sz || 3) * intensity
+    });
     parts.push(o);
     return o;
   }
@@ -2648,108 +2762,174 @@
         }
       }
       
-      // 블랙홀 렌더링 (더 화려하게)
+      // 블랙홀 렌더링 (그래픽 모드에 따라 조절)
       if(boss._dc && boss._dc.blackholes) {
         for(const bh of boss._dc.blackholes) {
           ctx.save();
           
-          // 시간에 따른 애니메이션 값
+          const intensity = getEffectIntensity();
           const time = now() * 0.001;
           const pulse = Math.sin(time * 3) * 0.5 + 0.5;
           const rotation = time * 2;
           
-          // 배경 왜곡 링들 (더 많고 화려하게)
-          ctx.globalAlpha = 0.4;
-          for(let i = 1; i <= 8; i++) {
-            const radiusMultiplier = 0.4 + i * 0.15;
-            const alpha = (8 - i) / 8 * 0.6;
-            ctx.globalAlpha = alpha;
-            
-            // 다양한 색상의 링
-            const colors = ['#8B00FF', '#4B0082', '#9400D3', '#FF00FF', '#DA70D6'];
-            ctx.strokeStyle = colors[i % colors.length];
-            ctx.lineWidth = 3 + pulse * 2;
-            ctx.shadowBlur = 15 + pulse * 10;
-            ctx.shadowColor = ctx.strokeStyle;
-            ctx.setLineDash([5, 10]);
-            ctx.lineDashOffset = rotation * (i % 2 === 0 ? 1 : -1) * 20;
-            
+          if(settings.graphicsMode === 'performance') {
+            // 성능 모드: 단순한 블랙홀
+            ctx.fillStyle = getColorBlindSafeColor('#000000', 'blackhole');
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = getColorBlindSafeColor('#8B00FF', 'blackhole');
             ctx.beginPath();
-            ctx.arc(bh.x, bh.y, bh.radius * radiusMultiplier, 0, TAU);
+            ctx.arc(bh.x, bh.y, bh.radius * 0.4, 0, TAU);
+            ctx.fill();
+            
+            // 단순한 링
+            ctx.strokeStyle = getColorBlindSafeColor('#8B00FF', 'blackhole');
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(bh.x, bh.y, bh.radius * 0.7, 0, TAU);
             ctx.stroke();
-          }
-          
-          // 회전하는 나선 효과
-          ctx.setLineDash([]);
-          ctx.globalAlpha = 0.7;
-          ctx.lineWidth = 2;
-          for(let spiral = 0; spiral < 3; spiral++) {
-            ctx.strokeStyle = ['#8B00FF', '#FF00FF', '#4B0082'][spiral];
-            ctx.shadowBlur = 20;
-            ctx.shadowColor = ctx.strokeStyle;
-            ctx.beginPath();
             
-            const spiralOffset = spiral * TAU / 3 + rotation;
-            for(let angle = 0; angle < TAU * 3; angle += 0.1) {
-              const r = bh.radius * 0.3 + (angle / (TAU * 3)) * bh.radius * 0.4;
-              const x = bh.x + Math.cos(angle + spiralOffset) * r;
-              const y = bh.y + Math.sin(angle + spiralOffset) * r;
+          } else if(settings.graphicsMode === 'simple') {
+            // 단순 모드: 기본적인 블랙홀 + 몇 개 링
+            const ringCount = 4;
+            ctx.globalAlpha = 0.4;
+            for(let i = 1; i <= ringCount; i++) {
+              const radiusMultiplier = 0.4 + i * 0.15;
+              const alpha = (ringCount - i) / ringCount * 0.6;
+              ctx.globalAlpha = alpha;
               
-              if(angle === 0) ctx.moveTo(x, y);
-              else ctx.lineTo(x, y);
+              ctx.strokeStyle = getColorBlindSafeColor('#8B00FF', 'blackhole');
+              ctx.lineWidth = 2;
+              ctx.shadowBlur = 8;
+              ctx.shadowColor = ctx.strokeStyle;
+              
+              ctx.beginPath();
+              ctx.arc(bh.x, bh.y, bh.radius * radiusMultiplier, 0, TAU);
+              ctx.stroke();
             }
-            ctx.stroke();
-          }
-          
-          // 블랙홀 중심부 (더 강렬하게)
-          const gradient = ctx.createRadialGradient(bh.x, bh.y, 0, bh.x, bh.y, bh.radius * 0.4);
-          gradient.addColorStop(0, '#000000');
-          gradient.addColorStop(0.7, '#1a0033');
-          gradient.addColorStop(1, '#8B00FF');
-          
-          ctx.fillStyle = gradient;
-          ctx.shadowBlur = 30 + pulse * 15;
-          ctx.shadowColor = '#8B00FF';
-          ctx.beginPath();
-          ctx.arc(bh.x, bh.y, bh.radius * 0.4, 0, TAU);
-          ctx.fill();
-          
-          // 중심 핵 (밝은 점)
-          ctx.fillStyle = '#FFFFFF';
-          ctx.shadowBlur = 40;
-          ctx.shadowColor = '#FF00FF';
-          ctx.beginPath();
-          ctx.arc(bh.x, bh.y, 3 + pulse * 2, 0, TAU);
-          ctx.fill();
-          
-          // 주변 파티클 효과 (번개같은 선들)
-          ctx.globalAlpha = 0.8;
-          ctx.lineWidth = 1;
-          for(let i = 0; i < 12; i++) {
-            const angle = (i / 12) * TAU + rotation;
-            const length = bh.radius * (0.5 + pulse * 0.3);
             
-            ctx.strokeStyle = ['#8B00FF', '#FF00FF', '#DA70D6'][i % 3];
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = ctx.strokeStyle;
+            // 중심부
+            const gradient = ctx.createRadialGradient(bh.x, bh.y, 0, bh.x, bh.y, bh.radius * 0.4);
+            gradient.addColorStop(0, '#000000');
+            gradient.addColorStop(1, getColorBlindSafeColor('#8B00FF', 'blackhole'));
             
+            ctx.fillStyle = gradient;
+            ctx.shadowBlur = 20;
+            ctx.shadowColor = getColorBlindSafeColor('#8B00FF', 'blackhole');
             ctx.beginPath();
-            ctx.moveTo(bh.x + Math.cos(angle) * bh.radius * 0.3, 
-                      bh.y + Math.sin(angle) * bh.radius * 0.3);
+            ctx.arc(bh.x, bh.y, bh.radius * 0.4, 0, TAU);
+            ctx.fill();
             
-            // 지그재그 라인
-            for(let j = 1; j <= 5; j++) {
-              const progress = j / 5;
-              const zigzag = Math.sin(progress * TAU * 2) * 15;
-              const perpAngle = angle + Math.PI / 2;
-              const x = bh.x + Math.cos(angle) * length * progress + 
-                       Math.cos(perpAngle) * zigzag;
-              const y = bh.y + Math.sin(angle) * length * progress + 
-                       Math.sin(perpAngle) * zigzag;
-              ctx.lineTo(x, y);
+          } else {
+            // 화려함 모드: 모든 효과 (기존 코드 유지하되 색약 보조 적용)
+            // 배경 왜곡 링들 (더 많고 화려하게)
+            ctx.globalAlpha = 0.4;
+            for(let i = 1; i <= 8; i++) {
+              const radiusMultiplier = 0.4 + i * 0.15;
+              const alpha = (8 - i) / 8 * 0.6;
+              ctx.globalAlpha = alpha;
+              
+              // 다양한 색상의 링 (색약 보조 적용)
+              const colors = [
+                getColorBlindSafeColor('#8B00FF', 'blackhole'), 
+                getColorBlindSafeColor('#4B0082', 'blackhole'), 
+                getColorBlindSafeColor('#9400D3', 'blackhole'), 
+                getColorBlindSafeColor('#FF00FF', 'blackhole'), 
+                getColorBlindSafeColor('#DA70D6', 'blackhole')
+              ];
+              ctx.strokeStyle = colors[i % colors.length];
+              ctx.lineWidth = 3 + pulse * 2;
+              ctx.shadowBlur = 15 + pulse * 10;
+              ctx.shadowColor = ctx.strokeStyle;
+              ctx.setLineDash([5, 10]);
+              ctx.lineDashOffset = rotation * (i % 2 === 0 ? 1 : -1) * 20;
+              
+              ctx.beginPath();
+              ctx.arc(bh.x, bh.y, bh.radius * radiusMultiplier, 0, TAU);
+              ctx.stroke();
             }
-            ctx.stroke();
-          }
+            
+            // 회전하는 나선 효과
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 0.7;
+            ctx.lineWidth = 2;
+            for(let spiral = 0; spiral < 3; spiral++) {
+              const spiralColors = [
+                getColorBlindSafeColor('#8B00FF', 'blackhole'), 
+                getColorBlindSafeColor('#FF00FF', 'blackhole'), 
+                getColorBlindSafeColor('#4B0082', 'blackhole')
+              ];
+              ctx.strokeStyle = spiralColors[spiral];
+              ctx.shadowBlur = 20;
+              ctx.shadowColor = ctx.strokeStyle;
+              ctx.beginPath();
+              
+              const spiralOffset = spiral * TAU / 3 + rotation;
+              for(let angle = 0; angle < TAU * 3; angle += 0.1) {
+                const r = bh.radius * 0.3 + (angle / (TAU * 3)) * bh.radius * 0.4;
+                const x = bh.x + Math.cos(angle + spiralOffset) * r;
+                const y = bh.y + Math.sin(angle + spiralOffset) * r;
+                
+                if(angle === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+              }
+              ctx.stroke();
+            }
+            
+            // 블랙홀 중심부 (더 강렬하게)
+            const gradient = ctx.createRadialGradient(bh.x, bh.y, 0, bh.x, bh.y, bh.radius * 0.4);
+            gradient.addColorStop(0, '#000000');
+            gradient.addColorStop(0.7, '#1a0033');
+            gradient.addColorStop(1, getColorBlindSafeColor('#8B00FF', 'blackhole'));
+            
+            ctx.fillStyle = gradient;
+            ctx.shadowBlur = 30 + pulse * 15;
+            ctx.shadowColor = getColorBlindSafeColor('#8B00FF', 'blackhole');
+            ctx.beginPath();
+            ctx.arc(bh.x, bh.y, bh.radius * 0.4, 0, TAU);
+            ctx.fill();
+            
+            // 중심 핵 (밝은 점)
+            ctx.fillStyle = '#FFFFFF';
+            ctx.shadowBlur = 40;
+            ctx.shadowColor = getColorBlindSafeColor('#FF00FF', 'blackhole');
+            ctx.beginPath();
+            ctx.arc(bh.x, bh.y, 3 + pulse * 2, 0, TAU);
+            ctx.fill();
+            
+            // 주변 파티클 효과 (번개같은 선들)
+            ctx.globalAlpha = 0.8;
+            ctx.lineWidth = 1;
+            for(let i = 0; i < 12; i++) {
+              const angle = (i / 12) * TAU + rotation;
+              const length = bh.radius * (0.5 + pulse * 0.3);
+              
+              const lightningColors = [
+                getColorBlindSafeColor('#8B00FF', 'blackhole'), 
+                getColorBlindSafeColor('#FF00FF', 'blackhole'), 
+                getColorBlindSafeColor('#DA70D6', 'blackhole')
+              ];
+              ctx.strokeStyle = lightningColors[i % 3];
+              ctx.shadowBlur = 15;
+              ctx.shadowColor = ctx.strokeStyle;
+              
+              ctx.beginPath();
+              ctx.moveTo(bh.x + Math.cos(angle) * bh.radius * 0.3, 
+                        bh.y + Math.sin(angle) * bh.radius * 0.3);
+              
+              // 지그재그 라인
+              for(let j = 1; j <= 5; j++) {
+                const progress = j / 5;
+                const zigzag = Math.sin(progress * TAU * 2) * 15;
+                const perpAngle = angle + Math.PI / 2;
+                const x = bh.x + Math.cos(angle) * length * progress + 
+                         Math.cos(perpAngle) * zigzag;
+                const y = bh.y + Math.sin(angle) * length * progress + 
+                         Math.sin(perpAngle) * zigzag;
+                ctx.lineTo(x, y);
+              }
+              ctx.stroke();
+            }
+          } // 화려함 모드 끝
           
           ctx.restore();
         }
@@ -3657,7 +3837,8 @@
   document.getElementById('btnPause').onclick=()=>togglePause();
 
   // 옵션
-  document.getElementById('optColorBlind').onchange=(e)=>{ settings.colorBlind=e.target.checked; save.settings=settings; saveNow(); }
+  document.getElementById('optGraphicsMode').onchange=(e)=>{ settings.graphicsMode=e.target.value; save.settings=settings; saveNow(); }
+  document.getElementById('optColorBlindMode').onchange=(e)=>{ settings.colorBlindMode=e.target.value; save.settings=settings; saveNow(); }
   document.getElementById('optShowHitbox').onchange=(e)=>{ settings.showHitbox=e.target.checked; save.settings=settings; saveNow(); }
   document.getElementById('optShowFps').onchange=(e)=>{ settings.showFps=e.target.checked; save.settings=settings; saveNow(); }
   document.getElementById('optVibrate').onchange=(e)=>{ settings.vibrate=e.target.checked; save.settings=settings; saveNow(); }
