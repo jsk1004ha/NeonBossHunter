@@ -2027,32 +2027,37 @@
         }
       }
       
-      // 3. 시공간 붕괴 - 전체 화면 패턴 (탄막 대폭 감소)
-      if(Math.floor(DC.t*0.3)%15===0 && chance(0.05 * DC.chaos)){ // 빈도 감소: 0.5->0.3, 12->15, 0.1->0.05
-        // 화면 전체에 무작위 탄환 폭발
-        for(let i=0; i<8 + Math.floor(DC.chaos*2); i++){ // 30+DC.chaos*10 -> 8+DC.chaos*2로 대폭 감소
+      // 3. 시공간 붕괴 - 전체 화면 패턴 (더욱 안전하게 조정)
+      if(Math.floor(DC.t*0.2)%20===0 && chance(0.03 * DC.chaos)){ // 더 낮은 빈도: 0.3->0.2, 15->20, 0.05->0.03
+        // 화면 전체에 무작위 탄환 폭발 (더 적게)
+        for(let i=0; i<4 + Math.floor(DC.chaos*1); i++){ // 8+DC.chaos*2 -> 4+DC.chaos*1로 추가 감소
           setTimeout(()=>{
             if(boss && boss.alive){
-              const x = rand(50, W-50);
-              const y = rand(50, H-50);
+              // 플레이어 주변 안전지대 확보 (반경 80px)
+              let x, y, attempts = 0;
+              do {
+                x = rand(100, W-100); // 경계에서 더 멀리
+                y = rand(100, H-100);
+                attempts++;
+              } while(Math.hypot(x - player.x, y - player.y) < 80 && attempts < 10);
               
-              // 폭발 탄환들 (수 감소)
-              for(let j=0; j<4; j++){ // 8->4로 감소
-                const a = j/4*TAU;
+              // 폭발 탄환들 (수 더 감소, 속도 감소)
+              for(let j=0; j<3; j++){ // 4->3으로 추가 감소
+                const a = j/3*TAU;
                 spawnBullet({
                   x: x,
                   y: y,
-                  vx: Math.cos(a)*200, // 속도 감소
-                  vy: Math.sin(a)*200,
-                  r: 4, // 크기 감소
-                  dmg: 1.2, // 데믴지 감소
+                  vx: Math.cos(a)*150, // 속도 더 감소: 200->150
+                  vy: Math.sin(a)*150,
+                  r: 3, // 크기 더 감소: 4->3
+                  dmg: 1.0, // 데미지 더 감소: 1.2->1.0
                   color: '#8B00FF',
                   hostile: true,
-                  ttl: 2.5 // TTL 감소
+                  ttl: 2.0 // TTL 더 감소: 2.5->2.0
                 });
               }
             }
-          }, i*150); // 딜레이 증가
+          }, i*200); // 딜레이 더 증가: 150->200
         }
       }
       
@@ -2336,7 +2341,7 @@
         p.fireCd = 0.02 / playerUp.rof; // 극도로 빠른 연사 (0.02초 간격)
         const a = p.aim; // 정확한 조준
         const spd = 2000 * playerUp.projSpeed; // 극도로 빠른 탄속
-        const dmg = 500 * playerUp.dmg; // 극도로 높은 데미지 (보스 원킬 수준)
+        const dmg = 20 * playerUp.dmg; // 극도로 높은 데미지 (보스 원킬 수준)
         const range = 5.0 * playerUp.range; // 극도로 긴 사정거리
         
         // 3발의 강력한 레이저 동시 발사
