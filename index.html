@@ -2109,7 +2109,7 @@
         // 발사!
         const chargeRatio = p.chargeTime / 4.0;
         const size = 6 + chargeRatio * 8; // 6~14
-        const damage = (5.0 + chargeRatio * 10.0) * playerUp.dmg; // 5.0~15.0배 (2x buff from 2.5~7.5)
+        const damage = (5.0 + chargeRatio * 10.0) * playerUp.dmg * 0.8; // 0.8배로 너프: 4.0~12.0배
         const speed = 500 * playerUp.projSpeed;
         const penetration = Math.floor(chargeRatio * 4); // 0~4 관통
         
@@ -2304,7 +2304,7 @@
         p.fireCd = 1.8 / playerUp.rof; // 빠른 연사 (1.8초 간격으로 감소)
         const a = p.aim; // 정확한 조준
         const spd = 1200 * playerUp.projSpeed; // 매우 빠른 탄속
-        const dmg = 50 * playerUp.dmg; // 높은 기본 데미지 (2x buff: 25->50)
+        const dmg = 65 * playerUp.dmg; // 1.3배 버프: 50->65
         const range = 2.5 * playerUp.range; // 긴 사정거리
         
         spawnBullet({
@@ -2313,7 +2313,7 @@
           vx: Math.cos(a) * spd,
           vy: Math.sin(a) * spd,
           r: 4,
-          dmg: dmg * 0.8, // 최종 데미지: 매우 높음 (50*0.8=40)
+          dmg: dmg * 0.8, // 최종 데미지: 52 (65*0.8, 1.3배 버프 적용)
           ttl: 1.5 * range, // 긴 사정거리
           color: '#ff4444',
           hostile: false,
