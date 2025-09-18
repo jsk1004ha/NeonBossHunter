@@ -2434,7 +2434,7 @@
         
         const a = p.aim;
         const spd = 250 * playerUp.projSpeed; // 느린 초기 속도
-        const dmg = 15 * playerUp.dmg; // 약한 데미지
+        const dmg = 11 * playerUp.dmg; // 약한 데미지
         const range = 2.0 * playerUp.range;
         
         spawnBullet({
@@ -2443,7 +2443,7 @@
           vx: Math.cos(a) * spd,
           vy: Math.sin(a) * spd,
           r: 5,
-          dmg: dmg * 0.7, // 최종 데미지: 매우 약함 (4.8)
+          dmg: dmg * 0.6, // 최종 데미지: 매우 약함 (4.8)
           ttl: 3.0 * range,
           color: '#00ff77', // 녹색 계열
           hostile: false,
