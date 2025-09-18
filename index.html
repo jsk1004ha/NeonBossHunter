@@ -207,7 +207,7 @@
       colorBlindMode:'none', // 'none', 'protanopia', 'deuteranopia', 'tritanopia', 'high_contrast'
       keys:{up:'KeyW',down:'KeyS',left:'KeyA',right:'KeyD',fire:'MouseLeft',dash:'ShiftLeft',pause:'Escape'}
     },
-    unlockedWeapons:{ LASER:true, SHOTGUN:true, ROCKET:true, MINIGUN:true, PLASMA:true, BOOMERANG:true, SMG:true, SNIPER:true, DEBUG_CANNON:true }
+    unlockedWeapons:{ LASER:true, SHOTGUN:true, ROCKET:true, MINIGUN:true, PLASMA:true, BOOMERANG:true, SMG:true, SNIPER:true, GUIDED_MISSILE:true, DEBUG_CANNON:true }
   };
   let save = loadSave();
 
@@ -433,6 +433,7 @@
     {id:'BOOMERANG', name:'부메랑', desc:'되돌아오는 곡선 투사체', type:'ranged', move:1.05},
     {id:'SMG', name:'기관단총', desc:'초고속 연사, 기동성 특화', type:'ranged', move:1.25},
     {id:'SNIPER', name:'저격총', desc:'장거리 고위력, 정밀 사격', type:'ranged', move:0.75},
+    {id:'GUIDED_MISSILE', name:'유도탄', desc:'보스 근처에서 자동 유도, 약한 데미지', type:'ranged', move:1.10},
     {id:'DEBUG_CANNON', name:'🔧 디버그 캐논', desc:'[DEV] 무한 관통 초고위력 레이저', type:'ranged', move:1.50, debug:true}
   ];
   let chosenWeapon = 'LASER';
@@ -582,6 +583,12 @@
       this.rocketReloading=false;
       this.rocketReloadTime=0;
       this.rocketMaxReloadTime=10.0; // 느린 재장전
+      // 유도탄 시스템
+      this.guidedAmmo=5;
+      this.guidedMaxAmmo=5;
+      this.guidedReloading=false;
+      this.guidedReloadTime=0;
+      this.guidedMaxReloadTime=12.0; // 더 긴 재장전
       // 대쉬 시스템
       this.isDashPreviewing=false;
       this.dashPreviewX=0;
@@ -614,6 +621,15 @@
         if(this.rocketReloadTime <= 0) {
           this.rocketReloading = false;
           this.rocketAmmo = this.rocketMaxAmmo;
+        }
+      }
+      
+      // 유도탄 재장전 처리
+      if(this.guidedReloading) {
+        this.guidedReloadTime -= dt;
+        if(this.guidedReloadTime <= 0) {
+          this.guidedReloading = false;
+          this.guidedAmmo = this.guidedMaxAmmo;
         }
       }
       
@@ -2390,6 +2406,63 @@
           });
         }
       }
+      else if(bw==='GUIDED_MISSILE'){
+        // 유도탄 재장전 중인지 확인
+        if(p.guidedReloading) {
+          return; // 재장전 중이면 발사 불가
+        }
+        
+        // 유도탄 탄창 시스템
+        if(p.guidedAmmo <= 0) {
+          // 탄창이 비어있으면 긴 재장전 시작
+          p.guidedReloading = true;
+          p.guidedReloadTime = p.guidedMaxReloadTime;
+          return; // 이번 프레임에는 발사하지 않음
+        }
+        
+        // 탄약 소모
+        p.guidedAmmo--;
+        
+        // 마지막 탄환을 쏜 경우 자동으로 재장전 시작
+        if(p.guidedAmmo <= 0) {
+          p.guidedReloading = true;
+          p.guidedReloadTime = p.guidedMaxReloadTime;
+        }
+        
+        // 느린 발사 속도 (2.5초 간격)
+        p.fireCd = 2.5 / playerUp.rof;
+        
+        const a = p.aim;
+        const spd = 250 * playerUp.projSpeed; // 느린 초기 속도
+        const dmg = 10 * playerUp.dmg; // 약한 데미지
+        const range = 2.0 * playerUp.range;
+        
+        spawnBullet({
+          x: p.x + Math.cos(a) * 15,
+          y: p.y + Math.sin(a) * 15,
+          vx: Math.cos(a) * spd,
+          vy: Math.sin(a) * spd,
+          r: 5,
+          dmg: dmg * 0.6, // 최종 데미지: 매우 약함 (4.8)
+          ttl: 3.0 * range,
+          color: '#00ff77', // 녹색 계열
+          hostile: false,
+          guided: true, // 유도탄 플래그
+          guideRange: 150, // 유도 범위 150픽셀
+          guideStrength: 0.02 // 유도 강도
+        });
+        
+        // 유도탄 발사 이펙트
+        for(let i=0; i<10; i++) {
+          spawnPart({
+            x: p.x + Math.cos(p.aim) * 12 + rand(-3, 3),
+            y: p.y + Math.sin(p.aim) * 12 + rand(-3, 3),
+            ttl: 0.25,
+            color: '#00ff77',
+            sz: rand(3, 6)
+          });
+        }
+      }
     }
   }
 
@@ -2514,6 +2587,44 @@
         }
         // 직진 모드거나 가까우면 현재 방향 유지
         b.x+=b.vx*dt; b.y+=b.vy*dt; b.ttl-=dt;
+      }else if(b.guided && boss && boss.alive){
+        // 유도탄 로직: 보스와의 거리가 150픽셀 이하일 때만 유도
+        const distToBoss = Math.hypot(b.x - boss.x, b.y - boss.y);
+        
+        if(distToBoss <= b.guideRange) {
+          // 유도 기능 활성화
+          const targetAngle = angleTo(b.x, b.y, boss.x, boss.y);
+          const currentAngle = Math.atan2(b.vy, b.vx);
+          const guideStrength = b.guideStrength || 0.02;
+          
+          let angleDiff = targetAngle - currentAngle;
+          // 각도 차이를 -π ~ π 범위로 정규화
+          while(angleDiff > Math.PI) angleDiff -= 2*Math.PI;
+          while(angleDiff < -Math.PI) angleDiff += 2*Math.PI;
+          
+          // 점진적으로 각도 조정 (부드러운 유도)
+          const newAngle = currentAngle + angleDiff * guideStrength;
+          const currentSpeed = Math.hypot(b.vx, b.vy);
+          
+          b.vx = Math.cos(newAngle) * currentSpeed;
+          b.vy = Math.sin(newAngle) * currentSpeed;
+          
+          // 유도 중일 때 파티클 이펙트
+          if(Math.random() < 0.3) {
+            spawnPart({
+              x: b.x + rand(-5, 5),
+              y: b.y + rand(-5, 5),
+              ttl: 0.15,
+              color: '#00ff77',
+              sz: rand(1, 3)
+            });
+          }
+        }
+        
+        // 위치 업데이트
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        b.ttl -= dt;
       }else{
         b.x+=b.vx*dt; b.y+=b.vy*dt; b.ttl-=dt;
       }
@@ -3234,6 +3345,76 @@
         ctx.fillStyle = '#ffffff';
         ctx.font = '10px monospace';
         ctx.fillText('ROCKETS', startX - 8, dashBarY - 2);
+      }
+      ctx.restore();
+    }
+    
+    // 유도탄 탄약/재장전 표시
+    if(player && player.weapon === 'GUIDED_MISSILE') {
+      const dashBarX = W - 80; // 대쉬 바 위치 기준
+      const dashBarY = 50;
+      
+      ctx.save();
+      
+      if(player.guidedReloading) {
+        // 재장전 중 - 로딩 바 표시
+        const reloadRatio = 1 - (player.guidedReloadTime / player.guidedMaxReloadTime);
+        const barWidth = 60;
+        const barHeight = 6;
+        const barX = dashBarX - barWidth - 15;
+        const barY = dashBarY;
+        
+        // 배경
+        ctx.fillStyle = '#333333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        // 진행도
+        ctx.fillStyle = reloadRatio >= 1 ? '#00ff77' : '#ff6666';
+        ctx.fillRect(barX, barY, barWidth * reloadRatio, barHeight);
+        // 테두리
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        // 라벨
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.fillText('RELOAD', barX, barY - 2);
+      } else {
+        // 일반 상태 - 탄약 개수 표시
+        const missileSize = 6;
+        const missileSpacing = 10;
+        const startX = dashBarX - (player.guidedMaxAmmo * missileSpacing) - 15; // 대쉬 바 왼쪽에 위치
+        const startY = dashBarY + 3; // 대쉬 바와 같은 높이
+        
+        for(let i = 0; i < player.guidedMaxAmmo; i++) {
+          const x = startX + i * missileSpacing;
+          const y = startY;
+          
+          if(i < player.guidedAmmo) {
+            // 남은 탄약 - 유도탄 색상
+            ctx.fillStyle = '#00ff77';
+          } else {
+            // 사용된 탄약 - 어두운 색
+            ctx.fillStyle = '#333333';
+          }
+          
+          // 유도탄 모양 그리기 (삼각형)
+          ctx.beginPath();
+          ctx.moveTo(x + missileSize/2, y - missileSize/2);
+          ctx.lineTo(x - missileSize/2, y + missileSize/2);
+          ctx.lineTo(x + missileSize/2, y + missileSize/2);
+          ctx.closePath();
+          ctx.fill();
+          
+          // 유도탄 테두리
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+        
+        // 라벨
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.fillText('GUIDED', startX - 5, dashBarY - 2);
       }
       ctx.restore();
     }
