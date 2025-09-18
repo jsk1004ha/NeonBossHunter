@@ -41,7 +41,7 @@
   .floating .btn{border:1px solid rgba(120,160,255,.25);background:rgba(12,18,40,.8);border-radius:2px;padding:10px 12px}
   .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);backdrop-filter: blur(2px);pointer-events:auto}
   .modal .card{width:min(720px,92vw)}
-  .hpbar{position:fixed;left:50%;transform:translateX(-50%);top:42px;width:min(880px,92vw);height:16px;background:rgba(20,28,55,.8);border-radius:2px;border:1px solid rgba(120,160,255,.3);overflow:hidden;z-index:999}
+  .hpbar{position:fixed;left:50%;transform:translateX(-50%);top:8px;width:min(880px,92vw);height:16px;background:rgba(20,28,55,.8);border-radius:2px;border:1px solid rgba(120,160,255,.3);overflow:hidden}
   .hpfill{height:100%;background:linear-gradient(90deg,#ff4d7e,#ffd24a);box-shadow:0 0 12px rgba(255,77,126,.6) inset}
   .stageNote{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font-size:28px;padding:10px 16px;background:rgba(0,0,0,.35);border:1px solid rgba(120,160,255,.3);border-radius:2px;display:none;font-weight:700;text-shadow:0 0 15px var(--accent);}
   /* 모바일 조이스틱 */
@@ -172,7 +172,10 @@
   // ===========================================
   // 디버그 모드 활성화 방법:
   // debugMode: false를 debugMode: true로 변경
-  // 플레이어가 무적이 되어 모든 데미지를 무시합니다
+  // 효과:
+  // - 플레이어가 무적이 되어 모든 데미지를 무시합니다
+  // - 디버그 캐논 무기가 무기 선택창에 나타납니다
+  // - 디버그 캐논: 극도로 강력한 데미지 (1000), 무한 관통, 초고속 연사
   // ===========================================
   
   const defaultSave = {
@@ -183,7 +186,7 @@
       debugMode:false, // 디버그 모드 - 무적 (코드에서만 변경 가능)
       keys:{up:'KeyW',down:'KeyS',left:'KeyA',right:'KeyD',fire:'MouseLeft',dash:'ShiftLeft',pause:'Escape'}
     },
-    unlockedWeapons:{ LASER:true, SHOTGUN:true, ROCKET:true, MINIGUN:true, PLASMA:true, BOOMERANG:true, SMG:true, SNIPER:true }
+    unlockedWeapons:{ LASER:true, SHOTGUN:true, ROCKET:true, MINIGUN:true, PLASMA:true, BOOMERANG:true, SMG:true, SNIPER:true, DEBUG_CANNON:true }
   };
   let save = loadSave();
 
@@ -337,7 +340,8 @@
     {id:'PLASMA', name:'플라즈마', desc:'충전식 고위력 관통탄', type:'ranged', move:0.90},
     {id:'BOOMERANG', name:'부메랑', desc:'되돌아오는 곡선 투사체', type:'ranged', move:1.05},
     {id:'SMG', name:'기관단총', desc:'초고속 연사, 기동성 특화', type:'ranged', move:1.25},
-    {id:'SNIPER', name:'저격총', desc:'장거리 고위력, 정밀 사격', type:'ranged', move:0.75}
+    {id:'SNIPER', name:'저격총', desc:'장거리 고위력, 정밀 사격', type:'ranged', move:0.75},
+    {id:'DEBUG_CANNON', name:'🔧 디버그 캐논', desc:'[DEV] 무한 관통 초고위력 레이저', type:'ranged', move:1.50, debug:true}
   ];
   let chosenWeapon = 'LASER';
 
@@ -364,7 +368,7 @@
       id:'HYDRA_CORE',
       name:'하이드라 코어',
       color:'#ff71ff',
-      baseHP:1500,
+      baseHP:1300,
       phases:[
         { name:'Orbit Orbs',     until:0.5,   script:'orbits' },
         { name:'Spawn Drones',   until:0.2,   script:'drones' },
@@ -375,11 +379,22 @@
       id:'TITAN_FORGE',
       name:'타이탄 포지',
       color:'#ffd24a',
-      baseHP:2000,
+      baseHP:1600,
       phases:[
         { name:'Meteor Hammers', until:0.6,   script:'meteors' },
         { name:'Hammer Barrage', until:0.3,   script:'hammer_barrage' },
         { name:'Desperation',    until:0.0,   script:'desperate' }
+      ]
+    },
+    {
+      id:'VOID_REAPER',
+      name:'보이드 리퍼',
+      color:'#8B00FF',
+      baseHP:2000,
+      phases:[
+        { name:'Shadow Walls',   until:0.65,  script:'shadow_walls' },
+        { name:'Space Distortion', until:0.30, script:'space_distortion' },
+        { name:'Dimensional Collapse', until:0.0, script:'dimensional_collapse' }
       ]
     }
   ];
@@ -447,12 +462,6 @@
       this.sniperReloading=false;
       this.sniperReloadTime=0;
       this.sniperMaxReloadTime=7.5;
-      // 로켓 탄창 시스템
-      this.rocketAmmo=4;
-      this.rocketMaxAmmo=4;
-      this.rocketReloading=false;
-      this.rocketReloadTime=0;
-      this.rocketMaxReloadTime=6.0;
       // 대쉬 시스템
       this.isDashPreviewing=false;
       this.dashPreviewX=0;
@@ -476,15 +485,6 @@
         if(this.sniperReloadTime <= 0) {
           this.sniperReloading = false;
           this.sniperAmmo = this.sniperMaxAmmo;
-        }
-      }
-      
-      // 로켓 재장전 처리
-      if(this.rocketReloading) {
-        this.rocketReloadTime -= dt;
-        if(this.rocketReloadTime <= 0) {
-          this.rocketReloading = false;
-          this.rocketAmmo = this.rocketMaxAmmo;
         }
       }
       
@@ -1375,6 +1375,576 @@
           }, i*200);
         }
       }
+    },
+    
+    // ===== VOID_REAPER 패턴들 =====
+    
+    // Phase 1: Shadow Walls - 대쉬 필수 활용 패턴
+    shadow_walls(b,dt){
+      if(!b._sw){ 
+        b._sw={
+          cd:0, 
+          wallTimer:0, 
+          wallPattern:0, 
+          walls:[], 
+          warningTime:2.0
+        }; 
+      }
+      const SW=b._sw; 
+      SW.cd-=dt; 
+      SW.wallTimer-=dt;
+      
+      // 기존 벽들 업데이트
+      for(let i=SW.walls.length-1; i>=0; i--){
+        const wall = SW.walls[i];
+        wall.lifetime -= dt;
+        
+        if(wall.phase === 'warning'){
+          // 경고 단계
+          if(wall.lifetime <= 0){
+            wall.phase = 'moving';
+            wall.lifetime = 4.0; // 이동 시간
+          }
+        } else if(wall.phase === 'moving'){
+          // 이동 단계
+          wall.x += wall.vx * dt;
+          wall.y += wall.vy * dt;
+          
+          // 플레이어와 충돌 검사 (대쉬 중이 아닐 때만)
+          if(player && !player.isDashPreviewing && player.ifr <= 0){
+            // 벽의 실제 충돌 영역 계산
+            const wallHalfWidth = wall.width / 2;
+            const wallHalfHeight = wall.height / 2;
+            
+            // 플레이어가 벽 안에 있는지 체크 (틈 제외)
+            if(player.x > wall.x - wallHalfWidth && 
+               player.x < wall.x + wallHalfWidth &&
+               player.y > wall.y - wallHalfHeight && 
+               player.y < wall.y + wallHalfHeight){
+              
+              // 틈 위치에 있는지 확인
+              let inGap = false;
+              for(const gap of wall.gaps){
+                if(player.x > gap.x - gap.width/2 && 
+                   player.x < gap.x + gap.width/2 &&
+                   player.y > gap.y - gap.height/2 && 
+                   player.y < gap.y + gap.height/2){
+                  inGap = true;
+                  break;
+                }
+              }
+              
+              if(!inGap){
+                player.hit(3); // 높은 데미지
+              }
+            }
+          }
+          
+          if(wall.lifetime <= 0){
+            SW.walls.splice(i, 1);
+          }
+        }
+      }
+      
+      // 새로운 벽 생성
+      if(SW.cd <= 0){
+        SW.cd = 3.5 - SW.wallPattern * 0.3; // 점점 빨라짐
+        SW.wallPattern = (SW.wallPattern + 1) % 4;
+        
+        let newWall;
+        const speed = 80 + SW.wallPattern * 20;
+        
+        if(SW.wallPattern === 0){ // 세로 벽 (좌→우)
+          const startX = -50;
+          const targetY = player.y + rand(-100, 100);
+          newWall = {
+            x: startX,
+            y: targetY,
+            width: 40,
+            height: H * 0.8,
+            vx: speed,
+            vy: 0,
+            gaps: [
+              {x: startX, y: targetY + rand(-150, 150), width: 80, height: 120}
+            ],
+            phase: 'warning',
+            lifetime: SW.warningTime,
+            color: '#8B00FF'
+          };
+        } else if(SW.wallPattern === 1){ // 가로 벽 (위→아래)
+          const startY = -50;
+          const targetX = player.x + rand(-150, 150);
+          newWall = {
+            x: targetX,
+            y: startY,
+            width: W * 0.7,
+            height: 40,
+            vx: 0,
+            vy: speed,
+            gaps: [
+              {x: targetX + rand(-200, 200), y: startY, width: 120, height: 80}
+            ],
+            phase: 'warning',
+            lifetime: SW.warningTime,
+            color: '#8B00FF'
+          };
+        } else if(SW.wallPattern === 2){ // 대각선 벽
+          const startX = -50;
+          const startY = -50;
+          newWall = {
+            x: startX,
+            y: startY,
+            width: Math.hypot(W, H) * 0.8,
+            height: 50,
+            vx: speed * 0.7,
+            vy: speed * 0.7,
+            gaps: [
+              {x: startX + 200, y: startY + 200, width: 100, height: 100},
+              {x: startX + 400, y: startY + 400, width: 100, height: 100}
+            ],
+            phase: 'warning',
+            lifetime: SW.warningTime,
+            color: '#8B00FF'
+          };
+        } else { // X자 교차 벽
+          // 두 개의 대각선 벽 동시 생성
+          newWall = {
+            x: -50,
+            y: H + 50,
+            width: Math.hypot(W, H) * 0.8,
+            height: 40,
+            vx: speed * 0.7,
+            vy: -speed * 0.7,
+            gaps: [
+              {x: W/2 - 100, y: H/2, width: 200, height: 100}
+            ],
+            phase: 'warning',
+            lifetime: SW.warningTime,
+            color: '#8B00FF'
+          };
+          
+          // 두 번째 벽
+          SW.walls.push({
+            x: -50,
+            y: -50,
+            width: Math.hypot(W, H) * 0.8,
+            height: 40,
+            vx: speed * 0.7,
+            vy: speed * 0.7,
+            gaps: [
+              {x: W/2 + 100, y: H/2, width: 200, height: 100}
+            ],
+            phase: 'warning',
+            lifetime: SW.warningTime,
+            color: '#8B00FF'
+          });
+        }
+        
+        SW.walls.push(newWall);
+      }
+      
+      // 추가 패턴: 그림자 탄환
+      if(Math.floor(b.timer*2)%8===0 && chance(0.08)){
+        const N=12; const speed=140;
+        for(let i=0;i<N;i++){
+          const a = i/N*TAU + b.timer*0.5;
+          spawnBullet({
+            x: b.x + Math.cos(a)*60,
+            y: b.y + Math.sin(a)*60,
+            vx: Math.cos(a)*speed,
+            vy: Math.sin(a)*speed,
+            r: 5,
+            dmg: 1,
+            color: '#4B0082',
+            hostile: true,
+            ttl: 3.0
+          });
+        }
+      }
+    },
+    
+    // Phase 2: Space Distortion - 공간 왜곡 패턴
+    space_distortion(b,dt){
+      if(!b._sd){ 
+        b._sd={
+          cd:0, 
+          teleportTimer:0, 
+          distortionFields:[], 
+          pattern:0,
+          patternTimer:0
+        }; 
+      }
+      const SD=b._sd; 
+      SD.cd-=dt; 
+      SD.teleportTimer-=dt; 
+      SD.patternTimer+=dt;
+      
+      // 패턴 변경
+      if(SD.patternTimer > 8) { 
+        SD.pattern = (SD.pattern + 1) % 3; 
+        SD.patternTimer = 0; 
+      }
+      
+      // 왜곡 필드 업데이트
+      for(let i=SD.distortionFields.length-1; i>=0; i--){
+        const field = SD.distortionFields[i];
+        field.lifetime -= dt;
+        field.intensity = Math.sin(field.lifetime * 4) * 0.5 + 0.5;
+        
+        // 플레이어가 왜곡 필드 안에 있으면 탄환 궤도 왜곡
+        if(dist2(player.x, player.y, field.x, field.y) < field.radius * field.radius){
+          // 플레이어 이동 저해 효과
+          if(player.moveSpd > 100) player.moveSpd = 100;
+        }
+        
+        if(field.lifetime <= 0){
+          SD.distortionFields.splice(i, 1);
+        }
+      }
+      
+      // 텔레포트 공격
+      if(SD.teleportTimer <= 0){
+        SD.teleportTimer = 4.0 - SD.pattern * 0.5;
+        
+        // 보스 텔레포트
+        const oldX = b.x, oldY = b.y;
+        
+        // 텔레포트 이펙트 (사라짐)
+        for(let i=0; i<20; i++){
+          spawnPart({
+            x: oldX + rand(-30, 30),
+            y: oldY + rand(-30, 30),
+            vx: rand(-100, 100),
+            vy: rand(-100, 100),
+            ttl: 0.5,
+            color: '#8B00FF',
+            sz: rand(4, 8)
+          });
+        }
+        
+        // 새 위치로 텔레포트
+        if(SD.pattern === 0){
+          // 플레이어 근처로
+          const angle = rand(0, TAU);
+          b.x = player.x + Math.cos(angle) * 200;
+          b.y = player.y + Math.sin(angle) * 200;
+        } else if(SD.pattern === 1){
+          // 화면 모서리로
+          const side = Math.floor(rand(0, 4));
+          if(side === 0) { b.x = 100; b.y = rand(100, H-100); }
+          else if(side === 1) { b.x = W-100; b.y = rand(100, H-100); }
+          else if(side === 2) { b.x = rand(100, W-100); b.y = 100; }
+          else { b.x = rand(100, W-100); b.y = H-100; }
+        } else {
+          // 랜덤 위치
+          b.x = rand(150, W-150);
+          b.y = rand(100, H*0.6);
+        }
+        
+        // 경계 체크
+        b.x = clamp(b.x, 80, W-80);
+        b.y = clamp(b.y, 80, H-80);
+        
+        // 텔레포트 이펙트 (나타남)
+        for(let i=0; i<20; i++){
+          spawnPart({
+            x: b.x + rand(-30, 30),
+            y: b.y + rand(-30, 30),
+            vx: rand(-100, 100),
+            vy: rand(-100, 100),
+            ttl: 0.5,
+            color: '#8B00FF',
+            sz: rand(4, 8)
+          });
+        }
+        
+        // 텔레포트 후 즉시 공격
+        const attackType = Math.floor(rand(0, 3));
+        if(attackType === 0){
+          // 왜곡된 탄막
+          const N=16; const speed=180;
+          for(let i=0;i<N;i++){
+            const a = i/N*TAU;
+            setTimeout(()=>{
+              if(boss && boss.alive){
+                spawnBullet({
+                  x: b.x + Math.cos(a)*40,
+                  y: b.y + Math.sin(a)*40,
+                  vx: Math.cos(a)*speed,
+                  vy: Math.sin(a)*speed,
+                  r: 6,
+                  dmg: 1.5,
+                  color: '#9932CC',
+                  hostile: true,
+                  ttl: 3.0,
+                  distorted: true
+                });
+              }
+            }, i*50);
+          }
+        } else if(attackType === 1){
+          // 추적 보라색 구체
+          for(let i=0;i<4;i++){
+            setTimeout(()=>{
+              if(boss && boss.alive){
+                spawnBullet({
+                  x: b.x,
+                  y: b.y,
+                  homing: true,
+                  r: 8,
+                  spd: 150,
+                  dmg: 2,
+                  color: '#8B00FF',
+                  hostile: true,
+                  ttl: 6,
+                  turnRate: 2.5
+                });
+              }
+            }, i*300);
+          }
+        } else {
+          // 왜곡 필드 생성
+          SD.distortionFields.push({
+            x: b.x,
+            y: b.y,
+            radius: 120,
+            intensity: 1,
+            lifetime: 6.0,
+            color: '#8B00FF'
+          });
+        }
+      }
+      
+      // 지속적인 공간 왜곡 탄환
+      if(SD.cd <= 0){
+        SD.cd = 0.4 + SD.pattern * 0.1;
+        
+        const aim = angleTo(b.x, b.y, player.x, player.y);
+        const spread = 0.3;
+        
+        for(let i=-1; i<=1; i++){
+          const a = aim + i*spread;
+          spawnBullet({
+            x: b.x + Math.cos(a)*25,
+            y: b.y + Math.sin(a)*25,
+            vx: Math.cos(a)*200,
+            vy: Math.sin(a)*200,
+            r: 5,
+            dmg: 1,
+            color: '#9370DB',
+            hostile: true,
+            ttl: 4.0
+          });
+        }
+      }
+    },
+    
+    // Phase 3: Dimensional Collapse - 차원 붕괴 최종 패턴
+    dimensional_collapse(b,dt){
+      if(!b._dc){ 
+        b._dc={
+          t:0, 
+          chaos:1, 
+          blackholes:[], 
+          rifts:[],
+          voidTimer:0,
+          collapseTimer:0,
+          intensity:1
+        }; 
+      }
+      const DC=b._dc; 
+      DC.t+=dt; 
+      DC.chaos = Math.min(4, 1 + DC.t*0.2);
+      DC.intensity = 1 + DC.t * 0.15;
+      DC.voidTimer -= dt;
+      DC.collapseTimer -= dt;
+      
+      // 1. 블랙홀 시스템
+      if(DC.voidTimer <= 0){
+        DC.voidTimer = Math.max(2, 5 - DC.chaos*0.5);
+        
+        // 새 블랙홀 생성
+        if(DC.blackholes.length < 3 + DC.chaos){
+          const blackhole = {
+            x: rand(120, W-120),
+            y: rand(120, H-120),
+            radius: 80 + rand(0, 40),
+            pullStrength: 200 + DC.chaos*50,
+            lifetime: 8 + rand(0, 4),
+            growthRate: 10
+          };
+          DC.blackholes.push(blackhole);
+          
+          // 블랙홀 생성 이펙트
+          for(let i=0; i<30; i++){
+            spawnPart({
+              x: blackhole.x + rand(-50, 50),
+              y: blackhole.y + rand(-50, 50),
+              vx: rand(-150, 150),
+              vy: rand(-150, 150),
+              ttl: 1.0,
+              color: '#000000',
+              sz: rand(3, 7)
+            });
+          }
+        }
+      }
+      
+      // 블랙홀 업데이트
+      for(let i=DC.blackholes.length-1; i>=0; i--){
+        const bh = DC.blackholes[i];
+        bh.lifetime -= dt;
+        bh.radius += bh.growthRate * dt;
+        
+        // 플레이어를 블랙홀로 끌어당김
+        const distToPlayer = Math.hypot(bh.x - player.x, bh.y - player.y);
+        if(distToPlayer < bh.radius*2){
+          const pullAngle = angleTo(player.x, player.y, bh.x, bh.y);
+          const pullForce = bh.pullStrength / Math.max(1, distToPlayer*0.01);
+          
+          // 대쉬 중이 아닐 때만 끌어당김
+          if(!player.isDashPreviewing){
+            player.x += Math.cos(pullAngle) * pullForce * dt * 0.3;
+            player.y += Math.sin(pullAngle) * pullForce * dt * 0.3;
+          }
+          
+          // 너무 가까우면 데미지
+          if(distToPlayer < bh.radius*0.5){
+            player.hit(2);
+          }
+        }
+        
+        // 탄환들도 블랙홀로 끌어당김
+        for(const bullet of bullets){
+          if(!bullet.hostile) continue;
+          const distToBH = Math.hypot(bh.x - bullet.x, bh.y - bullet.y);
+          if(distToBH < bh.radius*1.5){
+            const pullAngle = angleTo(bullet.x, bullet.y, bh.x, bh.y);
+            const pullForce = 100 / Math.max(1, distToBH*0.01);
+            bullet.vx += Math.cos(pullAngle) * pullForce * dt;
+            bullet.vy += Math.sin(pullAngle) * pullForce * dt;
+          }
+        }
+        
+        if(bh.lifetime <= 0){
+          // 블랙홀 폭발
+          for(let j=0; j<50; j++){
+            const a = rand(0, TAU);
+            const dist = rand(0, bh.radius);
+            spawnBullet({
+              x: bh.x + Math.cos(a)*dist,
+              y: bh.y + Math.sin(a)*dist,
+              vx: Math.cos(a)*(200 + rand(0, 100)),
+              vy: Math.sin(a)*(200 + rand(0, 100)),
+              r: 6,
+              dmg: 2,
+              color: '#8B00FF',
+              hostile: true,
+              ttl: 4.0
+            });
+          }
+          DC.blackholes.splice(i, 1);
+        }
+      }
+      
+      // 2. 차원 균열 시스템
+      if(DC.collapseTimer <= 0){
+        DC.collapseTimer = Math.max(1.5, 4 - DC.chaos*0.3);
+        
+        // 차원 균열 생성
+        const riftCount = Math.floor(1 + DC.chaos*0.5);
+        for(let i=0; i<riftCount; i++){
+          const rift = {
+            x: rand(80, W-80),
+            y: rand(80, H-80),
+            length: 150 + rand(0, 100),
+            angle: rand(0, TAU),
+            width: 20,
+            lifetime: 3 + rand(0, 2),
+            phase: 'opening'
+          };
+          DC.rifts.push(rift);
+          
+          // 균열에서 탄환 발사
+          setTimeout(()=>{
+            if(boss && boss.alive){
+              const bulletCount = 8 + DC.chaos*2;
+              for(let j=0; j<bulletCount; j++){
+                const spreadAngle = rift.angle + (j/(bulletCount-1) - 0.5) * Math.PI;
+                spawnBullet({
+                  x: rift.x + Math.cos(rift.angle)*(j-bulletCount/2)*15,
+                  y: rift.y + Math.sin(rift.angle)*(j-bulletCount/2)*15,
+                  vx: Math.cos(spreadAngle)*300,
+                  vy: Math.sin(spreadAngle)*300,
+                  r: 7,
+                  dmg: 2.5,
+                  color: '#4B0082',
+                  hostile: true,
+                  ttl: 5.0
+                });
+              }
+            }
+          }, 1000);
+        }
+      }
+      
+      // 균열 업데이트
+      for(let i=DC.rifts.length-1; i>=0; i--){
+        const rift = DC.rifts[i];
+        rift.lifetime -= dt;
+        
+        if(rift.lifetime <= 0){
+          DC.rifts.splice(i, 1);
+        }
+      }
+      
+      // 3. 시공간 붕괴 - 전체 화면 패턴
+      if(Math.floor(DC.t*0.5)%12===0 && chance(0.1 * DC.chaos)){
+        // 화면 전체에 무작위 탄환 폭발
+        for(let i=0; i<30 + DC.chaos*10; i++){
+          setTimeout(()=>{
+            if(boss && boss.alive){
+              const x = rand(50, W-50);
+              const y = rand(50, H-50);
+              
+              // 폭발 탄환들
+              for(let j=0; j<8; j++){
+                const a = j/8*TAU;
+                spawnBullet({
+                  x: x,
+                  y: y,
+                  vx: Math.cos(a)*250,
+                  vy: Math.sin(a)*250,
+                  r: 5,
+                  dmg: 1.5,
+                  color: '#8B00FF',
+                  hostile: true,
+                  ttl: 3.0
+                });
+              }
+            }
+          }, i*100);
+        }
+      }
+      
+      // 4. 보스 중심 스파이럴 (지속적)
+      if(Math.floor(DC.t*3)%3===0 && chance(0.2)){
+        const N=20; const speed=160 + DC.chaos*20;
+        for(let i=0;i<N;i++){
+          const a = i/N*TAU + DC.t*2;
+          spawnBullet({
+            x: b.x + Math.cos(a)*50,
+            y: b.y + Math.sin(a)*50,
+            vx: Math.cos(a)*speed,
+            vy: Math.sin(a)*speed,
+            r: 6,
+            dmg: 2,
+            color: '#9932CC',
+            hostile: true,
+            ttl: 4.0
+          });
+        }
+      }
     }
   };
 
@@ -1475,32 +2045,9 @@
         for(let i=0;i<6;i++) spawnPart({x:p.x+Math.cos(p.aim)*12+rand(-4,4),y:p.y+Math.sin(p.aim)*12+rand(-4,4),ttl:0.15,color:'#ff71ff',sz:rand(2,5)});
       }
       else if(bw==='ROCKET'){
-        // 로켓 재장전 중인지 확인
-        if(p.rocketReloading) {
-          return; // 재장전 중이면 발사 불가
-        }
-        
-        // 로켓 탄창 시스템
-        if(p.rocketAmmo <= 0) {
-          // 탄창이 비어있으면 재장전 시작
-          p.rocketReloading = true;
-          p.rocketReloadTime = p.rocketMaxReloadTime;
-          return; // 이번 프레임에는 발사하지 않음
-        }
-        
-        // 탄약 소모
-        p.rocketAmmo--;
-        
-        // 마지막 로켓을 쏜 경우 자동으로 재장전 시작
-        if(p.rocketAmmo <= 0) {
-          p.rocketReloading = true;
-          p.rocketReloadTime = p.rocketMaxReloadTime;
-        }
-        
-        // 빠른 발사 속도 (저격총보다 빠름)
-        p.fireCd = 1.2 / playerUp.rof; // 1.2초 간격 (저격총 1.8초보다 빠름)
         const a=p.aim, spd=300*playerUp.projSpeed; // Speed up
-        spawnBullet({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:6,dmg:11.25*playerUp.dmg,color:'#ffd24a',hostile:false,ttl:2.4, explode:true}); // Damage buffed from 7.5 to 11.25 (1.5x increase)
+        spawnBullet({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:6,dmg:7.5*playerUp.dmg,color:'#ffd24a',hostile:false,ttl:2.4, explode:true}); // Damage buffed from 5.0 to 7.5 (60 damage, 1.5x sniper level)
+        p.fireCd=0.65/ playerUp.rof; // Cooldown up
         // 픽셀 스타일 로켓 발사 이펙트
         for(let i=0;i<8;i++) spawnPart({x:p.x+Math.cos(p.aim+Math.PI)*15+rand(-2,2),y:p.y+Math.sin(p.aim+Math.PI)*15+rand(-2,2),ttl:0.2,color:'#ffd24a',sz:rand(3,6)});
       }
@@ -1628,6 +2175,60 @@
             ttl: 0.3,
             color: '#ff4444',
             sz: rand(4, 8)
+          });
+        }
+      }
+      else if(bw==='DEBUG_CANNON'){
+        // 디버그 캐논 - 극도로 강력한 무기
+        p.fireCd = 0.02 / playerUp.rof; // 극도로 빠른 연사 (0.02초 간격)
+        const a = p.aim; // 정확한 조준
+        const spd = 2000 * playerUp.projSpeed; // 극도로 빠른 탄속
+        const dmg = 500 * playerUp.dmg; // 극도로 높은 데미지 (보스 원킬 수준)
+        const range = 5.0 * playerUp.range; // 극도로 긴 사정거리
+        
+        // 3발의 강력한 레이저 동시 발사
+        for(let i = -1; i <= 1; i++) {
+          const spread = i * 0.1; // 약간의 확산
+          const adjustedAngle = a + spread;
+          
+          spawnBullet({
+            x: p.x + Math.cos(adjustedAngle) * 30,
+            y: p.y + Math.sin(adjustedAngle) * 30,
+            vx: Math.cos(adjustedAngle) * spd,
+            vy: Math.sin(adjustedAngle) * spd,
+            r: 8, // 큰 탄환
+            dmg: dmg * 2.0, // 극도로 높은 데미지 (500*2=1000)
+            ttl: 3.0 * range, // 매우 긴 사정거리
+            color: '#ff0000', // 빨간색 (위험한 느낌)
+            hostile: false,
+            penetration: 999, // 무한 관통
+            debug: true // 디버그 탄환 표시
+          });
+        }
+        
+        // 강력한 디버그 발사 이펙트
+        for(let i=0; i<25; i++) {
+          spawnPart({
+            x: p.x + Math.cos(p.aim) * 25 + rand(-10, 10),
+            y: p.y + Math.sin(p.aim) * 25 + rand(-10, 10),
+            vx: Math.cos(p.aim + rand(-0.3, 0.3)) * rand(100, 300),
+            vy: Math.sin(p.aim + rand(-0.3, 0.3)) * rand(100, 300),
+            ttl: rand(0.4, 0.8),
+            color: '#ff0000',
+            sz: rand(6, 12)
+          });
+        }
+        
+        // 후방 폭발 이펙트
+        for(let i=0; i<15; i++) {
+          spawnPart({
+            x: p.x + Math.cos(p.aim + Math.PI) * 30 + rand(-15, 15),
+            y: p.y + Math.sin(p.aim + Math.PI) * 30 + rand(-15, 15),
+            vx: Math.cos(p.aim + Math.PI + rand(-0.5, 0.5)) * rand(150, 400),
+            vy: Math.sin(p.aim + Math.PI + rand(-0.5, 0.5)) * rand(150, 400),
+            ttl: rand(0.5, 1.0),
+            color: '#ffaa00',
+            sz: rand(8, 16)
           });
         }
       }
@@ -1948,6 +2549,135 @@
     
     // 보스
     boss?.draw(ctx);
+    
+    // VOID_REAPER 특수 이펙트 렌더링
+    if(boss && boss.cfg.id === 'VOID_REAPER') {
+      // 그림자 벽 렌더링
+      if(boss._sw && boss._sw.walls) {
+        for(const wall of boss._sw.walls) {
+          if(wall.phase === 'warning') {
+            // 경고 단계 - 깜빡이는 반투명 벽
+            ctx.save();
+            ctx.globalAlpha = 0.3 + Math.sin(now() * 0.01) * 0.2;
+            ctx.fillStyle = '#ff3b5c';
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = '#ff3b5c';
+            ctx.fillRect(wall.x - wall.width/2, wall.y - wall.height/2, wall.width, wall.height);
+            
+            // 틈 표시 (초록색)
+            ctx.fillStyle = '#00ff88';
+            ctx.shadowColor = '#00ff88';
+            for(const gap of wall.gaps) {
+              ctx.fillRect(gap.x - gap.width/2, gap.y - gap.height/2, gap.width, gap.height);
+            }
+            ctx.restore();
+          } else if(wall.phase === 'moving') {
+            // 이동 단계 - 단단한 벽
+            ctx.save();
+            ctx.fillStyle = wall.color;
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = wall.color;
+            ctx.fillRect(wall.x - wall.width/2, wall.y - wall.height/2, wall.width, wall.height);
+            
+            // 틈은 투명하게 (검은색으로 뚫림)
+            ctx.globalCompositeOperation = 'destination-out';
+            for(const gap of wall.gaps) {
+              ctx.fillRect(gap.x - gap.width/2, gap.y - gap.height/2, gap.width, gap.height);
+            }
+            ctx.restore();
+          }
+        }
+      }
+      
+      // 왜곡 필드 렌더링
+      if(boss._sd && boss._sd.distortionFields) {
+        for(const field of boss._sd.distortionFields) {
+          ctx.save();
+          ctx.globalAlpha = field.intensity * 0.4;
+          
+          // 왜곡 필드 시각 효과 (동심원)
+          for(let i = 3; i > 0; i--) {
+            ctx.strokeStyle = '#8B00FF';
+            ctx.lineWidth = 3;
+            ctx.shadowBlur = 8;
+            ctx.shadowColor = '#8B00FF';
+            ctx.beginPath();
+            ctx.arc(field.x, field.y, field.radius * (i/3) * field.intensity, 0, TAU);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+      
+      // 블랙홀 렌더링
+      if(boss._dc && boss._dc.blackholes) {
+        for(const bh of boss._dc.blackholes) {
+          ctx.save();
+          
+          // 블랙홀 중심 (검은색)
+          ctx.fillStyle = '#000000';
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = '#8B00FF';
+          ctx.beginPath();
+          ctx.arc(bh.x, bh.y, bh.radius * 0.3, 0, TAU);
+          ctx.fill();
+          
+          // 블랙홀 가장자리 (보라색 링)
+          ctx.strokeStyle = '#8B00FF';
+          ctx.lineWidth = 8;
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = '#8B00FF';
+          ctx.beginPath();
+          ctx.arc(bh.x, bh.y, bh.radius * 0.7, 0, TAU);
+          ctx.stroke();
+          
+          // 외부 왜곡 효과
+          ctx.globalAlpha = 0.3;
+          ctx.strokeStyle = '#4B0082';
+          ctx.lineWidth = 2;
+          for(let i = 1; i <= 3; i++) {
+            ctx.beginPath();
+            ctx.arc(bh.x, bh.y, bh.radius * (0.8 + i*0.1), 0, TAU);
+            ctx.stroke();
+          }
+          
+          ctx.restore();
+        }
+      }
+      
+      // 차원 균열 렌더링
+      if(boss._dc && boss._dc.rifts) {
+        for(const rift of boss._dc.rifts) {
+          ctx.save();
+          
+          // 균열 라인
+          ctx.strokeStyle = '#4B0082';
+          ctx.lineWidth = rift.width;
+          ctx.shadowBlur = 12;
+          ctx.shadowColor = '#4B0082';
+          ctx.lineCap = 'round';
+          
+          const startX = rift.x - Math.cos(rift.angle) * rift.length/2;
+          const startY = rift.y - Math.sin(rift.angle) * rift.length/2;
+          const endX = rift.x + Math.cos(rift.angle) * rift.length/2;
+          const endY = rift.y + Math.sin(rift.angle) * rift.length/2;
+          
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+          
+          // 균열 중심 빛
+          ctx.strokeStyle = '#8B00FF';
+          ctx.lineWidth = rift.width * 0.3;
+          ctx.shadowBlur = 8;
+          ctx.shadowColor = '#8B00FF';
+          ctx.stroke();
+          
+          ctx.restore();
+        }
+      }
+    }
 
     // 포탈
     if (portal) {
@@ -1987,6 +2717,45 @@
         // 내부 코어
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(b.x - b.r*0.4, b.y - b.r*0.4, b.r*0.8, b.r*0.8);
+        ctx.restore();
+      }else if(b.debug){
+        // 디버그 탄환 특별 렌더링
+        ctx.save();
+        
+        // 강력한 글로우 이펙트
+        ctx.shadowBlur = 25;
+        ctx.shadowColor = b.color;
+        
+        // 외부 링
+        ctx.strokeStyle = b.color;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r + 3, 0, TAU);
+        ctx.stroke();
+        
+        // 내부 코어
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r, 0, TAU);
+        ctx.fill();
+        
+        // 중심 하이라이트
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r * 0.4, 0, TAU);
+        ctx.fill();
+        
+        // 회전하는 외부 링
+        const time = now() * 0.01;
+        ctx.strokeStyle = '#ffff00';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.lineDashOffset = time * 10;
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, b.r + 6, 0, TAU);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        
         ctx.restore();
       }else{
         drawPixelBullet(b.x, b.y, b.r, b.color||'#49f3ff', !b.hostile);
@@ -2107,70 +2876,48 @@
       ctx.restore();
     }
     
-    // 로켓 탄약/재장전 표시
-    if(player && player.weapon === 'ROCKET') {
+    // 디버그 무기 표시
+    if(player && player.weapon === 'DEBUG_CANNON' && settings.debugMode) {
       const dashBarX = W - 80; // 대쉬 바 위치 기준
       const dashBarY = 50;
       
       ctx.save();
       
-      if(player.rocketReloading) {
-        // 재장전 중 - 로딩 바 표시
-        const reloadRatio = 1 - (player.rocketReloadTime / player.rocketMaxReloadTime);
-        const barWidth = 60;
-        const barHeight = 6;
-        const barX = dashBarX - barWidth - 15;
-        const barY = dashBarY;
-        
-        // 배경
-        ctx.fillStyle = '#333333';
-        ctx.fillRect(barX, barY, barWidth, barHeight);
-        // 진행도
-        ctx.fillStyle = reloadRatio >= 1 ? '#ffd24a' : '#ff6666';
-        ctx.fillRect(barX, barY, barWidth * reloadRatio, barHeight);
-        // 테두리
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(barX, barY, barWidth, barHeight);
-        // 라벨
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '10px monospace';
-        ctx.fillText('RELOAD', barX, barY - 2);
-      } else {
-        // 일반 상태 - 로켓 개수 표시
-        const rocketSize = 8;
-        const rocketSpacing = 12;
-        const startX = dashBarX - (player.rocketMaxAmmo * rocketSpacing) - 15; // 대쉬 바 왼쪽에 위치
-        const startY = dashBarY + 3; // 대쉬 바와 같은 높이
-        
-        for(let i = 0; i < player.rocketMaxAmmo; i++) {
-          const x = startX + i * rocketSpacing;
-          const y = startY;
-          
-          if(i < player.rocketAmmo) {
-            // 남은 로켓 - 밝은 색
-            ctx.fillStyle = '#ffd24a';
-          } else {
-            // 사용된 로켓 - 어두운 색
-            ctx.fillStyle = '#333333';
-          }
-          
-          // 로켓 모양 그리기 (둥근 직사각형)
-          ctx.beginPath();
-          ctx.roundRect(x - rocketSize/2, y - rocketSize/3, rocketSize, rocketSize*2/3, 2);
-          ctx.fill();
-          
-          // 로켓 테두리
-          ctx.strokeStyle = '#ffffff';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
-        
-        // 라벨
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '10px monospace';
-        ctx.fillText('ROCKET', startX - 8, dashBarY - 2);
-      }
+      // 디버그 무기 상태 표시
+      const barWidth = 100;
+      const barHeight = 8;
+      const barX = dashBarX - barWidth - 15;
+      const barY = dashBarY + 20; // 대쉬 바 아래에 위치
+      
+      // 깜빡이는 배경
+      const flashIntensity = Math.sin(now() * 0.01) * 0.3 + 0.7;
+      ctx.fillStyle = `rgba(255, 0, 0, ${flashIntensity * 0.3})`;
+      ctx.fillRect(barX - 5, barY - 5, barWidth + 10, barHeight + 10);
+      
+      // 메인 바
+      ctx.fillStyle = '#ff0000';
+      ctx.fillRect(barX, barY, barWidth, barHeight);
+      
+      // 내부 펄스 효과
+      const pulseIntensity = Math.sin(now() * 0.02) * 0.5 + 0.5;
+      ctx.fillStyle = `rgba(255, 255, 0, ${pulseIntensity})`;
+      ctx.fillRect(barX + 2, barY + 2, (barWidth - 4) * pulseIntensity, barHeight - 4);
+      
+      // 테두리
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(barX, barY, barWidth, barHeight);
+      
+      // 경고 라벨
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 10px monospace';
+      ctx.fillText('⚠️ DEBUG WEAPON ⚠️', barX - 10, barY - 8);
+      
+      // 화력 표시
+      ctx.fillStyle = '#ffff00';
+      ctx.font = '8px monospace';
+      ctx.fillText('POWER: ∞', barX + barWidth + 5, barY + 6);
+      
       ctx.restore();
     }
   }
@@ -2662,8 +3409,19 @@
     g.innerHTML='';
     for(const w of weapons){
       if(!save.unlockedWeapons[w.id]) continue; // 해금 제한이 있다면
+      
+      // 디버그 무기는 디버그 모드일 때만 표시
+      if(w.debug && !settings.debugMode) continue;
+      
       const d=document.createElement('div');
       d.className='weapon'; d.dataset.id=w.id;
+      
+      // 디버그 무기인 경우 특별한 스타일 적용
+      if(w.debug) {
+        d.style.border = '2px solid #ff0000';
+        d.style.backgroundColor = 'rgba(255, 0, 0, 0.1)';
+      }
+      
       d.innerHTML=`<b>${w.name}</b><div>${w.desc}</div><div class="tiny">이동속도 계수: ${w.move}</div>`;
       d.onclick=()=>{
         chosenWeapon=w.id;
