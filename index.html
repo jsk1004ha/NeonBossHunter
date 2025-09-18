@@ -2213,7 +2213,7 @@
         p.fireCd = 0.08 / playerUp.rof;
         const a = p.aim + rand(-0.05,0.05);
         const spd = 800*playerUp.projSpeed;
-        const dmg = 10*playerUp.dmg;
+        const dmg = 13*playerUp.dmg;
         const range = 1.3*playerUp.range; // 사거리 1.3배 증가
         spawnBullet({x:p.x,y:p.y,vx:Math.cos(a)*spd*1.1,vy:Math.sin(a)*spd*1.1,r:5,dmg:dmg*0.2,ttl:0.5*range,color:'#ffd24a',hostile:false}); // Damage nerfed from 0.25 to 0.15
       }
