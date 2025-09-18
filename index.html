@@ -41,7 +41,7 @@
   .floating .btn{border:1px solid rgba(120,160,255,.25);background:rgba(12,18,40,.8);border-radius:2px;padding:10px 12px}
   .modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.55);backdrop-filter: blur(2px);pointer-events:auto}
   .modal .card{width:min(720px,92vw)}
-  .hpbar{position:fixed;left:50%;transform:translateX(-50%);top:8px;width:min(880px,92vw);height:16px;background:rgba(20,28,55,.8);border-radius:2px;border:1px solid rgba(120,160,255,.3);overflow:hidden}
+  .hpbar{position:fixed;left:50%;transform:translateX(-50%);top:60px;width:min(880px,92vw);height:16px;background:rgba(20,28,55,.8);border-radius:2px;border:1px solid rgba(120,160,255,.3);overflow:hidden}
   .hpfill{height:100%;background:linear-gradient(90deg,#ff4d7e,#ffd24a);box-shadow:0 0 12px rgba(255,77,126,.6) inset}
   .stageNote{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font-size:28px;padding:10px 16px;background:rgba(0,0,0,.35);border:1px solid rgba(120,160,255,.3);border-radius:2px;display:none;font-weight:700;text-shadow:0 0 15px var(--accent);}
   /* 모바일 조이스틱 */
@@ -462,6 +462,12 @@
       this.sniperReloading=false;
       this.sniperReloadTime=0;
       this.sniperMaxReloadTime=7.5;
+      // 로켓 탄창 시스템
+      this.rocketAmmo=4;
+      this.rocketMaxAmmo=4;
+      this.rocketReloading=false;
+      this.rocketReloadTime=0;
+      this.rocketMaxReloadTime=10.0; // 느린 재장전
       // 대쉬 시스템
       this.isDashPreviewing=false;
       this.dashPreviewX=0;
@@ -485,6 +491,15 @@
         if(this.sniperReloadTime <= 0) {
           this.sniperReloading = false;
           this.sniperAmmo = this.sniperMaxAmmo;
+        }
+      }
+      
+      // 로켓 재장전 처리
+      if(this.rocketReloading) {
+        this.rocketReloadTime -= dt;
+        if(this.rocketReloadTime <= 0) {
+          this.rocketReloading = false;
+          this.rocketAmmo = this.rocketMaxAmmo;
         }
       }
       
@@ -1961,10 +1976,10 @@
       
       if(p.isCharging) {
         p.chargeTime += dt * 1.5; // Charge speed increased by 1.5x
-        p.chargeTime = Math.min(2.0, p.chargeTime); // 최대 2초 충전
+        p.chargeTime = Math.min(6.0, p.chargeTime); // 최대 6초 충전 (2배 증가)
         
         // 충전 이펙트
-        const chargeIntensity = p.chargeTime / 2.0;
+        const chargeIntensity = p.chargeTime / 6.0;
         if(Math.random() < chargeIntensity * 0.8) {
           spawnPart({
             x: p.x + rand(-15, 15),
@@ -1978,7 +1993,7 @@
       
       if(!wantsFire && p.isCharging) {
         // 발사!
-        const chargeRatio = p.chargeTime / 2.0;
+        const chargeRatio = p.chargeTime / 4.0;
         const size = 6 + chargeRatio * 8; // 6~14
         const damage = (5.0 + chargeRatio * 10.0) * playerUp.dmg; // 5.0~15.0배 (2x buff from 2.5~7.5)
         const speed = 500 * playerUp.projSpeed;
@@ -2034,7 +2049,7 @@
         for(let i=0;i<4;i++) spawnPart({x:p.x+Math.cos(p.aim)*20+rand(-3,3),y:p.y+Math.sin(p.aim)*20+rand(-3,3),ttl:0.1,color:'#49f3ff',sz:rand(3,6)});
       }
       else if(bw==='SHOTGUN'){
-        const K=6, spread=0.22; // Spread reduced for tighter pattern
+        const K=12, spread=0.22; // 탄환 수 2배 증가: 6->12
         const spd=380*playerUp.projSpeed, dmg=2.4*playerUp.dmg; // Damage buffed from 1.8 to 2.4
         for(let i=0;i<K;i++){
           const a=p.aim + rand(-spread,spread);
@@ -2045,9 +2060,33 @@
         for(let i=0;i<6;i++) spawnPart({x:p.x+Math.cos(p.aim)*12+rand(-4,4),y:p.y+Math.sin(p.aim)*12+rand(-4,4),ttl:0.15,color:'#ff71ff',sz:rand(2,5)});
       }
       else if(bw==='ROCKET'){
+        // 로켓 재장전 중인지 확인
+        if(p.rocketReloading) {
+          return; // 재장전 중이면 발사 불가
+        }
+        
+        // 로켓 탄창 시스템
+        if(p.rocketAmmo <= 0) {
+          // 탄창이 비어있으면 긴 재장전 시작
+          p.rocketReloading = true;
+          p.rocketReloadTime = p.rocketMaxReloadTime;
+          return; // 이번 프레임에는 발사하지 않음
+        }
+        
+        // 탄약 소모
+        p.rocketAmmo--;
+        
+        // 마지막 탄환을 쏜 경우 자동으로 재장전 시작
+        if(p.rocketAmmo <= 0) {
+          p.rocketReloading = true;
+          p.rocketReloadTime = p.rocketMaxReloadTime;
+        }
+        
+        // 빠른 연사 속도 (1.5초 간격)
+        p.fireCd = 1.5 / playerUp.rof;
+        
         const a=p.aim, spd=300*playerUp.projSpeed; // Speed up
-        spawnBullet({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:6,dmg:7.5*playerUp.dmg,color:'#ffd24a',hostile:false,ttl:2.4, explode:true}); // Damage buffed from 5.0 to 7.5 (60 damage, 1.5x sniper level)
-        p.fireCd=0.65/ playerUp.rof; // Cooldown up
+        spawnBullet({x:p.x+Math.cos(a)*18,y:p.y+Math.sin(a)*18,vx:Math.cos(a)*spd,vy:Math.sin(a)*spd,r:6,dmg:22.5*playerUp.dmg,color:'#ffd24a',hostile:false,ttl:2.4, explode:true}); // 3배 데미지: 7.5 * 3 = 22.5
         // 픽셀 스타일 로켓 발사 이펙트
         for(let i=0;i<8;i++) spawnPart({x:p.x+Math.cos(p.aim+Math.PI)*15+rand(-2,2),y:p.y+Math.sin(p.aim+Math.PI)*15+rand(-2,2),ttl:0.2,color:'#ffd24a',sz:rand(3,6)});
       }
@@ -2056,7 +2095,7 @@
         const a = p.aim + rand(-0.05,0.05);
         const spd = 800*playerUp.projSpeed;
         const dmg = 10*playerUp.dmg;
-        const range = 1*playerUp.range;
+        const range = 1.3*playerUp.range; // 사거리 1.3배 증가
         spawnBullet({x:p.x,y:p.y,vx:Math.cos(a)*spd*1.1,vy:Math.sin(a)*spd*1.1,r:5,dmg:dmg*0.2,ttl:0.5*range,color:'#ffd24a',hostile:false}); // Damage nerfed from 0.25 to 0.15
       }
       else if(bw==='BOOMERANG'){
@@ -2096,10 +2135,10 @@
       }
       else if(bw==='SMG'){
         p.fireCd = 0.05 / playerUp.rof; // 매우 빠른 연사 (0.05초 간격)
-        const a = p.aim + rand(-0.08, 0.08); // 약간의 반동
+        const a = p.aim + rand(-0.15, 0.15); // 심한 탄퍼짐 (0.08 -> 0.15)
         const spd = 650 * playerUp.projSpeed; // 빠른 탄속
         const dmg = 6 * playerUp.dmg; // 낮은 기본 데미지
-        const range = 0.6 * playerUp.range; // 짧은 사정거리
+        const range = 1.2 * playerUp.range; // 사거리 2배 증가 (0.6 -> 1.2)
         
         spawnBullet({
           x: p.x + Math.cos(a) * 10,
@@ -2108,7 +2147,7 @@
           vy: Math.sin(a) * spd,
           r: 3, // 작은 탄환
           dmg: dmg * 0.35, // 최종 데미지: 매우 낮음
-          ttl: 0.4 * range, // 짧은 사정거리
+          ttl: 0.4 * range, // 사거리 2배 증가
           color: '#ffaa00',
           hostile: false
         });
@@ -2872,6 +2911,73 @@
         ctx.fillStyle = '#ffffff';
         ctx.font = '10px monospace';
         ctx.fillText('AMMO', startX - 5, dashBarY - 2);
+      }
+      ctx.restore();
+    }
+    
+    // 로켓 탄약/재장전 표시
+    if(player && player.weapon === 'ROCKET') {
+      const dashBarX = W - 80; // 대쉬 바 위치 기준
+      const dashBarY = 50;
+      
+      ctx.save();
+      
+      if(player.rocketReloading) {
+        // 재장전 중 - 로딩 바 표시
+        const reloadRatio = 1 - (player.rocketReloadTime / player.rocketMaxReloadTime);
+        const barWidth = 60;
+        const barHeight = 6;
+        const barX = dashBarX - barWidth - 15;
+        const barY = dashBarY;
+        
+        // 배경
+        ctx.fillStyle = '#333333';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+        // 진행도
+        ctx.fillStyle = reloadRatio >= 1 ? '#ffd24a' : '#ff6666';
+        ctx.fillRect(barX, barY, barWidth * reloadRatio, barHeight);
+        // 테두리
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barWidth, barHeight);
+        // 라벨
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.fillText('RELOAD', barX, barY - 2);
+      } else {
+        // 일반 상태 - 탄약 개수 표시
+        const rocketSize = 8; // 로켓은 조금 더 크게
+        const rocketSpacing = 12;
+        const startX = dashBarX - (player.rocketMaxAmmo * rocketSpacing) - 15; // 대쉬 바 왼쪽에 위치
+        const startY = dashBarY + 3; // 대쉬 바와 같은 높이
+        
+        for(let i = 0; i < player.rocketMaxAmmo; i++) {
+          const x = startX + i * rocketSpacing;
+          const y = startY;
+          
+          if(i < player.rocketAmmo) {
+            // 남은 탄약 - 로켓 색상
+            ctx.fillStyle = '#ffd24a';
+          } else {
+            // 사용된 탄약 - 어두운 색
+            ctx.fillStyle = '#333333';
+          }
+          
+          // 로켓 모양 그리기 (둥근 사각형)
+          ctx.beginPath();
+          ctx.roundRect(x - rocketSize/3, y - rocketSize/2, rocketSize/1.5, rocketSize, 2);
+          ctx.fill();
+          
+          // 로켓 테두리
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+        
+        // 라벨
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px monospace';
+        ctx.fillText('ROCKETS', startX - 8, dashBarY - 2);
       }
       ctx.restore();
     }
