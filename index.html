@@ -2434,7 +2434,7 @@
         
         const a = p.aim;
         const spd = 250 * playerUp.projSpeed; // 느린 초기 속도
-        const dmg = 11 * playerUp.dmg; // 약한 데미지
+        const dmg = 28.125 * playerUp.dmg; // 로켓의 3/4 데미지 (1.5배 버프 적용)
         const range = 2.0 * playerUp.range;
         
         spawnBullet({
@@ -2443,7 +2443,7 @@
           vx: Math.cos(a) * spd,
           vy: Math.sin(a) * spd,
           r: 5,
-          dmg: dmg * 0.6, // 최종 데미지: 매우 약함 (4.8)
+          dmg: dmg * 0.6, // 최종 데미지: 로켓의 3/4 (16.875, 1.5배 버프)
           ttl: 3.0 * range,
           color: '#00ff77', // 녹색 계열
           hostile: false,
@@ -2646,10 +2646,17 @@
       // 보스와 플레이어탄 충돌
       if(!b.hostile && boss && boss.alive){
         if(b.laser){
-          if(Math.hypot(boss.x-b.x,boss.y-b.y) <= b.r + boss.r) { boss.take(b.dmg||0.5); }
+          if(Math.hypot(boss.x-b.x,boss.y-b.y) <= b.r + boss.r) { 
+            // 레이저는 매 세그먼트마다 데미지를 주도록 설계됨 (기존 로직 유지)
+            boss.take(b.dmg||0.5); 
+          }
         }else{
           if(dist2(boss.x,boss.y,b.x,b.y) <= (boss.r + b.r)*(boss.r + b.r)){
-            boss.take(b.dmg||1);
+            // 이미 보스에게 데미지를 준 탄환인지 확인
+            if(!b.hitBoss) {
+              boss.take(b.dmg||1);
+              b.hitBoss = true; // 보스에게 데미지를 줬다고 표시
+            }
             
             // 플라즈마는 관통, 부메랑은 통과, 유도탄은 관통
             if(!b.plasma && !b.boomerang && !b.guided) {
@@ -2670,6 +2677,12 @@
             }
             
             if(b.explode){
+              // 폭발 범위 데미지 (한 번만)
+              if(!b.exploded && dist2(b.x,b.y,boss.x,boss.y) < (100+boss.r)*(100+boss.r)){
+                boss.take((b.dmg||1)*1.5);
+                b.exploded = true; // 폭발 데미지를 줬다고 표시
+              }
+              
               // 픽셀 스타일 폭발 이펙트
               for(let i=0;i<50;i++){
                 const aa=Math.random()*TAU, sp=rand(80,280);
@@ -2700,11 +2713,6 @@
                   color:'#ffffff'
                 });
               }
-              
-              // 폭발 범위 데미지
-              if(dist2(b.x,b.y,boss.x,boss.y) < (100+boss.r)*(100+boss.r)){
-                boss.take((b.dmg||1)*1.5);
-              }
             }
           }
         }
@@ -2725,8 +2733,8 @@
         if(!enemyBullet.alive || !enemyBullet.hostile || !enemyBullet.homing) continue;
         
         if(dist2(playerBullet.x, playerBullet.y, enemyBullet.x, enemyBullet.y) < (playerBullet.r + enemyBullet.r) * (playerBullet.r + enemyBullet.r)){
-          // 부메랑과 플라즈마는 유도탄을 파괴하지만 계속 진행
-          if(playerBullet.boomerang || playerBullet.plasma) {
+          // 부메랑, 플라즈마, 유도탄은 적 유도탄을 파괴하지만 계속 진행
+          if(playerBullet.boomerang || playerBullet.plasma || playerBullet.guided) {
             enemyBullet.alive = false;
             // 유도탄 파괴 이펙트만 생성
             for(let k=0; k<5; k++){
