@@ -2130,7 +2130,7 @@
         // 발사!
         const chargeRatio = p.chargeTime / 4.0;
         const size = 6 + chargeRatio * 8; // 6~14
-        const damage = (5.0 + chargeRatio * 10.0) * playerUp.dmg * 0.8; // 0.8배로 너프: 4.0~12.0배
+        const damage = (10.0 + chargeRatio * 35.0) * playerUp.dmg * 1; // 0.8배로 너프: 4.0~12.0배
         const speed = 500 * playerUp.projSpeed;
         const penetration = Math.floor(chargeRatio * 4); // 0~4 관통
         
@@ -2236,7 +2236,7 @@
       else if(bw==='BOOMERANG'){
         p.fireCd = 1.2 / playerUp.rof;
         const speed = 400 * playerUp.projSpeed;
-        const damage = 1.2 * playerUp.dmg; // 데미지 너프: 2.0 -> 1.2
+        const damage = 15 * playerUp.dmg; // 데미지 너프: 2.0 -> 1.2
         
         spawnBullet({
           x: p.x + Math.cos(p.aim) * 15,
@@ -2658,8 +2658,8 @@
               b.hitBoss = true; // 보스에게 데미지를 줬다고 표시
             }
             
-            // 플라즈마는 관통, 부메랑은 통과, 유도탄은 관통
-            if(!b.plasma && !b.boomerang && !b.guided) {
+            // 플라즈마는 관통, 부메랑은 통과, 유도탄은 보스에 맞으면 사라짐
+            if(!b.plasma && !b.boomerang) {
               b.alive=false;
             } else if(b.plasma && b.penetration !== undefined) {
               b.penetration--;
